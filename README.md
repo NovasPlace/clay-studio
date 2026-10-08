@@ -21,16 +21,16 @@ An optional port argument is supported: `python serve.py 8921`. The server liste
 3. Choose **Group** and drag a box or draw a loop around at least two piece centers. Grab any member to move the group, or stretch its corner.
 4. With a group selected, choose **Peel a piece** and pull a member at least 56 pixels to release it. **Ungroup** releases every member in place. Undo restores the relationship.
 5. Try **Push**, **Grow**, **Flow**, **Tidy**, **Paint**, and **Pin**. Grow upward to enlarge and downward to shrink. Tidy eases nearby rows and excessive gaps. Pin holds a piece or group still.
-6. Double-click words to edit them. Use **Add +** for text, cards, buttons, images, or more canvas.
+6. Double-click words to edit them. Use **Add +** for text, cards, buttons, images, or more canvas. With a picture selected, **Add + → Replace image** swaps it in the same place and size; dropping an image file onto a picture does the same.
 7. Choose **Phone** to inspect the stacked layout, **View site** to use the actual links, or **Export** to save a standalone page.
 
-**Make room** moves neighboring pieces aside where space permits. Text and cards retain minimum dimensions. Crowded layouts can still run out of room; the editor reports that explicitly. Groups are handled as rectangular units, including the space between members.
+**Make room** moves neighboring pieces aside where space permits, to make room for what you are moving; pieces that were already close together before the gesture stay as they are. Only pieces a gesture actually moves or resizes are rewritten. Text and cards retain minimum dimensions. Crowded layouts can still run out of room; the editor reports that explicitly. Groups are handled as rectangular units, including the space between members.
 
 The navigation, story section, and footer can all be grabbed in Sculpt. Their internal contents remain part of each region; Layout tools provide finer structural controls. In Layout tools, the pieces on the canvas can be selected and styled, and their contents rearranged; the pieces themselves are placed in Sculpt.
 
 ## Save and share
 
-Completed edits autosave in this browser for this local address. A different port or browser has a separate saved workspace. Use **Export → Save HTML file → Download HTML** for a portable copy. The local server also places saved pages in `exports/`.
+Completed edits autosave in this browser for this local address, with their Undo history, so Undo still works after you reopen the page (the most recent steps are kept as storage allows). A different port or browser has a separate saved workspace. Use **Export → Save HTML file → Download HTML** for a portable copy. The local server also places saved pages in `exports/`.
 
 Exported pages contain real HTML and CSS and work without Python, the editor, or a network connection. Groups keep their members together in the phone reading order. `examples/grouped-page.html` is a browser-verified export.
 

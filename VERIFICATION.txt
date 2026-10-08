@@ -80,3 +80,32 @@ Gecko pass and fixes, 2026-10-08 (Claude)
   Classic page regressions passed: dragging a card beside another still makes
     a grid; an icon moved into another card can be grabbed again.
   Not rerun in Chromium after these fixes.
+
+Revision benchmark fixes, 2026-10-08 (Claude)
+  Codex's Odd Hours revision run found three gaps: no way to replace an
+  illustration without file-drop, Undo lost on reopen, and a drag rewriting
+  unrelated pieces' positions. Fixed:
+    sculpt.js: a gesture writes only pieces it actually moved or resized.
+    sculpt-core.js / sculpt.js: Make room leaves pairs that were already
+      crowded before the gesture alone (new G.crowded; optional fifth
+      argument to G.separate). New unit test in qa/geometry.test.cjs.
+    sculpt.js / studio.js: Add + > Replace image (file chooser) and drop on
+      a picture swap it in place; ClayBridge.picture; SVG accepted.
+    studio.js: every history step also keeps the page as markup, pictures
+      pooled once; steps are stored under their own key, trimmed to fit, and
+      restored after a reload. The root's top-level elements are refilled,
+      not replaced, so Sculpt's canvas reference stays valid.
+  Benchmark on Low Tide Club (Clay-Pages\low-tide-club), headless Waterfox
+  153 with real input, one session: sculpt the page from a pile, reopen,
+  move one piece, change one card's hover in Layout tools, replace the
+  illustration with Replace image, save, export, reopen, verify, undo all
+  three after reopening. 9/9 passed: only those three things changed; every
+  other rule and rectangle was identical; undo after reopening restored the
+  exact baseline, the restored export matched the baseline export byte for
+  byte, and that state is what reopens. No page or console errors.
+  Regression after the fixes: Sculpt 30/30, groups/peel/Escape 8/8, Layout
+  tools and classic 13/13; npm test 22/22.
+  Chromium 152 (Claude's browser pane): a step survived a reload and Undo
+  removed it exactly; snapshots no longer try to load pooled pictures.
+  Not re-run on Odd Hours itself: its saved project lives in Codex's
+  browser storage.

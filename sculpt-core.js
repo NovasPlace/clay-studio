@@ -11,9 +11,14 @@
       for(const offset of [0,i[size]/2,i[size]])for(const t of targets){const d=t-(i[axis]+offset);if(Math.abs(d)<best){best=Math.abs(d);delta=d;target=t;}}
       if(best<=threshold){i[axis]+=delta;guides.push({axis,at:target});}}
     return {item:contain(i,bounds),guides};}
-  function separate(items,bounds,held=null,passes=28){const a=copy(items),heldIds=new Set(Array.isArray(held)?held:[held]);let unresolved=0;
+  // Pairs already crowded before a gesture (closer than the 10px Make room keeps), so the gesture can leave them be.
+  const pair=(a,b)=>a<b?a+'|'+b:b+'|'+a;
+  function crowded(items){const out=new Set();for(let j=0;j<items.length;j++)for(let k=j+1;k<items.length;k++){const p=items[j],q=items[k];
+    if(Math.min(p.x+p.w,q.x+q.w)-Math.max(p.x,q.x)+10>0&&Math.min(p.y+p.h,q.y+q.h)-Math.max(p.y,q.y)+10>0)out.add(pair(p.id,q.id));}return out;}
+  function separate(items,bounds,held=null,passes=28,settled=null){const a=copy(items),heldIds=new Set(Array.isArray(held)?held:[held]);let unresolved=0;
     for(let n=0;n<passes;n++){let changed=false;
       for(let j=0;j<a.length;j++)for(let k=j+1;k<a.length;k++){const p=a[j],q=a[k];const ox=Math.min(p.x+p.w,q.x+q.w)-Math.max(p.x,q.x)+10,oy=Math.min(p.y+p.h,q.y+q.h)-Math.max(p.y,q.y)+10;if(ox<=0||oy<=0)continue;
+        if(settled&&!heldIds.has(p.id)&&!heldIds.has(q.id)&&settled.has(pair(p.id,q.id)))continue;
         const lp=p.pin||heldIds.has(p.id),lq=q.pin||heldIds.has(q.id);if(lp&&lq)continue;
         const axis=ox<oy?'x':'y',dist=axis==='x'?ox:oy,sz=axis==='x'?'w':'h';const sign=p[axis]+p[sz]/2<=q[axis]+q[sz]/2?-1:1;
         const was=[p.x,p.y,q.x,q.y];if(!lp)p[axis]+=sign*dist*(lq?1:.5);if(!lq)q[axis]-=sign*dist*(lp?1:.5);contain(p,bounds);contain(q,bounds);
@@ -22,8 +27,9 @@
         changed=true;}
       if(!changed)break;}
     // Resolve edge traps using the nearest free rectangle, only when relaxation stalls.
-    for(const i of a){if(i.pin||heldIds.has(i.id))continue;const rest=a.filter(o=>o!==i);if(rest.some(o=>overlaps(i,o,2))){const free=nearestFree(i,rest,bounds);if(free){i.x=free.x;i.y=free.y;}}}
-    for(let j=0;j<a.length;j++)for(let k=j+1;k<a.length;k++){if(overlaps(a[j],a[k],-2))unresolved++;}
+    const left=(p,q)=>settled&&!heldIds.has(p.id)&&!heldIds.has(q.id)&&settled.has(pair(p.id,q.id));
+    for(const i of a){if(i.pin||heldIds.has(i.id))continue;const rest=a.filter(o=>o!==i);if(rest.some(o=>overlaps(i,o,2)&&!left(i,o))){const free=nearestFree(i,rest,bounds);if(free){i.x=free.x;i.y=free.y;}}}
+    for(let j=0;j<a.length;j++)for(let k=j+1;k<a.length;k++){if(overlaps(a[j],a[k],-2)&&!left(a[j],a[k]))unresolved++;}
     return {items:a,unresolved};}
   function push(items,p,delta,r,bounds){return items.map(i=>{if(i.pin)return {...i};const f=influence(i,p,r);return contain({...i,x:i.x+delta.x*f,y:i.y+delta.y*f},bounds);});}
   function grow(items,p,amount,r,bounds){return items.map(i=>{if(i.pin)return {...i};const f=influence(i,p,r),k=Math.exp(amount*f),w=clamp(i.w*k,i.minW||64,i.maxW||bounds.w),h=clamp(i.h*k,i.minH||30,bounds.h);return contain({...i,x:i.x+(i.w-w)/2,y:i.y+(i.h-h)/2,w,h,font:clamp((i.font||18)*k,i.minFont||14,120)},bounds);});}
@@ -54,6 +60,6 @@
     const rectangle=Math.abs(area)<1200,box=envelope(path.map(p=>({...p,w:0,h:0})));
     if(rectangle&&(box.w<20||box.h<20))return [];
     return items.filter(i=>!i.pin&&(rectangle?i.x+i.w/2>=box.x&&i.x+i.w/2<=box.x+box.w&&i.y+i.h/2>=box.y&&i.y+i.h/2<=box.y+box.h:inPolygon({x:i.x+i.w/2,y:i.y+i.h/2},path))).map(i=>i.id);}
-  const api={clamp,copy,contain,influence,snap,separate,push,grow,smooth,pathLength,sample,flow,envelope,overlaps,nearestFree,magnet,lasso,inPolygon};
+  const api={clamp,copy,contain,influence,snap,crowded,separate,push,grow,smooth,pathLength,sample,flow,envelope,overlaps,nearestFree,magnet,lasso,inPolygon};
   if(typeof module==='object'&&module.exports)module.exports=api;else scope.ClayGeometry=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

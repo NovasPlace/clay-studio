@@ -16,6 +16,15 @@ test('neighbor makes room while held and pinned pieces remain fixed',()=>{
   assert.deepEqual(out.items[0],input[0]);assert.deepEqual(out.items[2],input[2]);
   assert.equal(out.unresolved,0);assert.ok(out.items[1].x>=260);
 });
+test('pieces crowded before a move stay put while the moved piece makes room',()=>{
+  const input=[box('a',0,0),box('b',100,0),box('held',600,600)];const crowded=G.crowded(input);
+  assert.ok(crowded.has('a|b'));assert.equal(crowded.size,1);
+  const out=G.separate(input,bounds,'held',undefined,crowded);
+  assert.deepEqual(out.items,input);assert.equal(out.unresolved,0);
+  const onto=[box('a',0,0),box('b',100,0),box('held',120,40)];const moved=G.separate(onto,bounds,'held',undefined,crowded);
+  assert.deepEqual(moved.items[2],onto[2]);assert.ok(!G.overlaps(moved.items[2],moved.items[1],9.9));
+  assert.ok(G.separate(input,bounds).items[1].x>159);
+});
 test('impossible pinned collisions are reported without shifting pins',()=>{
   const input=[box('a',0,0,true),box('b',50,0,true)];const out=G.separate(input,bounds);
   assert.equal(out.unresolved,1);assert.deepEqual(out.items,input);

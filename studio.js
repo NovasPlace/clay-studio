@@ -261,14 +261,16 @@
   }
 
   // History: every change is one undo. A snapshot is every layer of rules plus every container's children, in order.
-  var undo=[],redo=[],lastWhy='',openStep=null;
+  var undo=[],redo=[],lastWhy='',openStep=null,pool={},epoch=0;
   function capture(){var m={};[root].concat(Array.prototype.slice.call(root.querySelectorAll('*'))).forEach(function(c){if(c.children.length&&!ours(c))m[idOf(c)]=Array.prototype.map.call(c.children,idOf);});return m;}
   // Taking a snapshot starts a new action, so the reason heard from here on is that action's label in the history.
   function snapshot(){var texts={},srcs={};Object.keys(edited).forEach(function(id){var e=byId(id);if(e)texts[id]=e.innerHTML;});
     Object.keys(imaged).forEach(function(id){var e=byId(id);if(e)srcs[id]=e.getAttribute('src');});lastWhy='';
-    return {layers:JSON.parse(JSON.stringify(layers)),reasons:Object.assign({},reasons),orders:capture(),copyOf:Object.assign({},copyOf),texts:texts,srcs:srcs};}
+    return {layers:JSON.parse(JSON.stringify(layers)),reasons:Object.assign({},reasons),orders:capture(),copyOf:Object.assign({},copyOf),texts:texts,srcs:srcs,
+      epoch:epoch,html:pooled(),edited:Object.assign({},edited),inserted:JSON.parse(JSON.stringify(inserted)),imaged:JSON.parse(JSON.stringify(imaged))};}
   function allItems(){var items=[];containers().forEach(function(c){items=items.concat(kids(c));});return items;}
   function restore(s){
+    if(!s.orders||s.epoch!==epoch){restoreMarkup(s);return;}
     flip(allItems(),function(){
       var keep={};Object.keys(s.orders).forEach(function(cid){keep[cid]=true;s.orders[cid].forEach(function(id){keep[id]=true;});});
       Object.keys(s.orders).forEach(function(cid){var c=byId(cid);if(!c)return;if(!c.isConnected)made[cid]=c;var current=Array.prototype.map.call(c.children,idOf);if(JSON.stringify(current)===JSON.stringify(s.orders[cid]))return;s.orders[cid].forEach(function(id){var k=byId(id);if(k)c.appendChild(k);});});
@@ -278,6 +280,26 @@
       if(s.texts)Object.keys(s.texts).forEach(function(id){var e=byId(id);if(e&&e.innerHTML!==s.texts[id])e.innerHTML=s.texts[id];});
       layers=JSON.parse(JSON.stringify(s.layers));reasons=Object.assign({},s.reasons);copyOf=Object.assign({},s.copyOf||{});render();
     });
+  }
+  // Every step also keeps the page as markup, with pictures stored once in a pool, so history outlives a reload.
+  // A step from before a reload, or from before the page was last rebuilt this way, comes back from that markup. The
+  // root keeps its own top-level elements and only refills them, so anything holding on to them stays connected.
+  var inert=doc.implementation.createHTMLDocument('');
+  function pooled(){var c=cleanCopy(inert.importNode(root,true));
+    c.querySelectorAll('[src^="data:"],image[href^="data:"]').forEach(function(n){var a=n.hasAttribute('src')?'src':'href',v=n.getAttribute(a),k=hash(v)+'-'+v.length;pool[k]=v;n.setAttribute(a,'clay-pool:'+k);});
+    return c.innerHTML;}
+  function unpooled(h){return h.replace(/clay-pool:([0-9a-z]+-\d+)/g,function(m,k){return pool[k]||m;});}
+  function restoreMarkup(s){
+    var t=doc.createElement('template'),tops={};t.innerHTML=unpooled(s.html);
+    Array.prototype.forEach.call(root.children,function(c){var id=c.getAttribute('data-cs');if(id)tops[id]=c;});
+    var next=Array.prototype.map.call(t.content.childNodes,function(n){var old=n.nodeType===1&&tops[n.getAttribute('data-cs')];if(!old)return n;
+      Array.prototype.slice.call(old.attributes).forEach(function(a){if(!n.hasAttribute(a.name))old.removeAttribute(a.name);});
+      Array.prototype.forEach.call(n.attributes,function(a){old.setAttribute(a.name,a.value);});
+      old.replaceChildren.apply(old,Array.prototype.slice.call(n.childNodes));return old;});
+    root.replaceChildren.apply(root,next);
+    layers=JSON.parse(JSON.stringify(s.layers));reasons=Object.assign({},s.reasons);copyOf=Object.assign({},s.copyOf||{});
+    if(s.edited)edited=Object.assign({},s.edited);if(s.inserted)inserted=JSON.parse(JSON.stringify(s.inserted));if(s.imaged)imaged=JSON.parse(JSON.stringify(s.imaged));
+    motions.forEach(function(m,e){if(!e.isConnected)motions.delete(e);});epoch++;render();
   }
   // Each step is labelled with its reason, or with the first thing said about it right after.
   function commit(before){before.label=lastWhy;lastWhy='';openStep=before;setTimeout(function(){if(openStep===before)openStep=null;},0);undo.push(before);if(undo.length>100)undo.shift();redo.length=0;buttons();save();}
@@ -294,13 +316,21 @@
   }
   function save(){
     try{var c=cleanCopy(root.cloneNode(true));localStorage.setItem(KEY,JSON.stringify({v:1,fp:fingerprint,html:c.innerHTML,layers:layers,reasons:reasons,nextId:nextId,origin:origin,names:originNames,copyOf:copyOf,edited:edited,texts0:originTexts,inserted:inserted,imaged:imaged}));window.dispatchEvent(new CustomEvent('clay-save',{detail:{ok:true}}));}catch(e){window.dispatchEvent(new CustomEvent('clay-save',{detail:{ok:false}}));}
+    clearTimeout(saveSteps.t);saveSteps.t=setTimeout(saveSteps,300);
   }
   var restored=false;
   (function(){
     try{var s=JSON.parse(localStorage.getItem(KEY)||'null');if(!s||s.v!==1||s.fp!==fingerprint)return;
-      root.innerHTML=s.html;nextId=s.nextId;layers=s.layers;reasons=s.reasons||{};origin=s.origin;originNames=s.names||{};copyOf=s.copyOf||{};edited=s.edited||{};originTexts=s.texts0||{};inserted=s.inserted||{};imaged=s.imaged||{};restored=true;}catch(e){}
+      root.innerHTML=s.html;nextId=s.nextId;layers=s.layers;reasons=s.reasons||{};origin=s.origin;originNames=s.names||{};copyOf=s.copyOf||{};edited=s.edited||{};originTexts=s.texts0||{};inserted=s.inserted||{};imaged=s.imaged||{};restored=true;
+      var h=JSON.parse(localStorage.getItem(KEY+':steps')||'null');if(h&&h.fp===fingerprint){Object.assign(pool,h.pool||{});undo=h.undo||[];redo=h.redo||[];}}catch(e){}
   })();
-  function resetPage(){try{localStorage.removeItem(KEY);}catch(e){}location.reload();}
+  function resetPage(){try{localStorage.removeItem(KEY);localStorage.removeItem(KEY+':steps');}catch(e){}location.reload();}
+  // The steps go under their own key, fewer of them until they fit, so the page itself always saves.
+  function saveSteps(){clearTimeout(saveSteps.t);saveSteps.t=0;try{for(var n=40;;n=Math.floor(n/2)){try{localStorage.setItem(KEY+':steps',steps(n));return;}catch(e){if(!n){localStorage.removeItem(KEY+':steps');return;}}}}catch(e){}}
+  function steps(n){var used={},keep=function(s){(s.html.match(/clay-pool:[0-9a-z]+-\d+/g)||[]).forEach(function(m){used[m.slice(10)]=pool[m.slice(10)];});
+      return {label:s.label,prevLabel:s.prevLabel,html:s.html,layers:s.layers,reasons:s.reasons,copyOf:s.copyOf,edited:s.edited,inserted:s.inserted,imaged:s.imaged};};
+    var o={fp:fingerprint,undo:n?undo.slice(-n).map(keep):[],redo:n?redo.slice(-n).map(keep):[]};o.pool=used;return JSON.stringify(o);}
+  addEventListener('pagehide',function(){if(saveSteps.t)saveSteps();});
 
   // ---- The studio's own UI: one shadow root on <html>. ----
   host=mk('clay-studio');host.style.cssText='all:initial;position:fixed;left:0;top:0;width:0;height:0;z-index:2147483647';html.appendChild(host);
@@ -1276,6 +1306,9 @@
         done(cv.toDataURL(file.type==='image/png'?'image/png':'image/jpeg',.86));};im.onerror=function(){done(url);};im.src=url;};
     fr.readAsDataURL(file);
   }
+  // A swapped picture keeps its element, place and size. A description that was only a file name follows the new file.
+  function swapPicture(img,url,name){var id=idOf(img);if(!imaged[id])imaged[id]={orig:img.getAttribute('src')};var before=snapshot();imaged[id].file=name;img.setAttribute('src',url);
+    if(/\.(png|jpe?g|webp|gif|avif|svg)$/i.test(img.getAttribute('alt')||''))img.setAttribute('alt',name);lastWhy='You swapped in '+name+'.';commit(before);}
   function filesIn(e){return !!e.dataTransfer&&Array.prototype.indexOf.call(e.dataTransfer.types||[],'Files')>=0;}
   function dropSpot(t){return t.tagName==='IMG'&&inRoot(t)?t:pickItem(t,false)||kids(root).slice(-1)[0];}
   addEventListener('dragover',function(e){if(!on||!filesIn(e))return;e.preventDefault();if(!inRoot(e.target)){ui.target.style.display='none';return;}e.dataTransfer.dropEffect='copy';box(ui.target,dropSpot(e.target).getBoundingClientRect(),4);},true);
@@ -1285,8 +1318,7 @@
     if(!inRoot(t)||!file||!/^image\//.test(file.type)){if(file)say('Drop an image file onto the page to add it.');return;}
     var spot=dropSpot(t);
     shrinkImage(file,function(url){
-      if(spot.tagName==='IMG'){var id=idOf(spot);if(!imaged[id])imaged[id]={orig:spot.getAttribute('src')};var before=snapshot();imaged[id].file=file.name;spot.setAttribute('src',url);
-        lastWhy='You swapped in '+file.name+'.';commit(before);select(spot);pill(spot,'You swapped in '+file.name+'.','Ctrl+Z puts the old picture back.','');return;}
+      if(spot.tagName==='IMG'){swapPicture(spot,url,file.name);select(spot);pill(spot,'You swapped in '+file.name+'.','Ctrl+Z puts the old picture back.','');return;}
       var before2=snapshot(),img=mk('img');img.src=url;img.alt='';var nid=idOf(img);made[nid]=img;inserted[nid]={kind:'image',file:file.name};
       setRule(img,{display:'block',width:'100%','max-width':'560px',height:'auto','border-radius':'12px'},'base');placeNew(img,spot,before2);
     });
@@ -1595,6 +1627,7 @@
     register:function(el,kind){var id=idOf(el);made[id]=el;inserted[id]={kind:kind};return id;},
     remove:function(el){var before=snapshot();made[idOf(el)]=el;el.remove();lastWhy='You removed '+nameOf(el)+'.';commit(before);render();},
     mobile:function(v){setBP(v?'mobile':'base');hidePill();},
+    picture:function(img,file,done){shrinkImage(file,function(url){swapPicture(img,url,file.name);if(done)done();});},
     save:save
   };
 
