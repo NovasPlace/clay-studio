@@ -39,6 +39,22 @@
       state.leaves.forEach(i=>{rows.push({el:i.el,css:i.el.tagName==='IMG'?{height:i.h*h/state.h+'px'}:i.el.dataset.kind==='card'?{'min-height':i.h*h/state.h+'px'}:{}});i.fonts.forEach(f=>rows.push({el:f.el,css:{'font-size':Math.max(f.el.tagName==='SMALL'?11:14,Math.min(120,f.size*ratio))+'px'}}));});B.write(rows,'You stretched a group together.');fit(g);}
     function minimum(g){const r=g.getBoundingClientRect(),scale=Math.min(1,Math.max(.25,...members(g).map(e=>(e.dataset.kind==='block'?360:e.dataset.kind==='card'?200:e.tagName==='IMG'?100:140)/Math.max(1,e.getBoundingClientRect().width))));return {w:r.width*scale,h:Math.max(60,r.height*scale)};}
     function describe(){return [...field.querySelectorAll(':scope > [data-kind=group]')].map(g=>({id:g.id,bond:g.dataset.bond,members:members(g).map(e=>e.id)}));}
-    return {isGroup,members,unit,rect,wrap,ungroup,peel,fit,resizeState,resize,minimum,describe};
+    // Everything here measures pieces where they belong: held, a scattered piece is home and motion pauses.
+    const steady=f=>(...a)=>{if(document.documentElement.hasAttribute('data-clay-drag'))return f(...a);B.still(true);try{return f(...a);}finally{B.still(false);}};
+    // Scatter: each piece waits a little way out from the group's centre, turned, and comes home on hover, in drawing order.
+    // A piece that covers half the group or more is its backdrop and stays. The same group always scatters the same way.
+    function seeded(s){let h=2166136261;for(const c of s)h=Math.imul(h^c.charCodeAt(0),16777619);return ()=>{h=Math.imul(h^h>>>15,2246822507)^Math.imul(h^h>>>13,3266489909);return ((h^=h>>>16)>>>0)/4294967296;};}
+    function scattered(g){return isGroup(g)&&members(g).some(e=>getComputedStyle(e).getPropertyValue('--clay-scatter').trim());}
+    function scatter(g){const box=rect(g),W=field.clientWidth,H=field.clientHeight,c={x:box.x+box.w/2,y:box.y+box.h/2},out={t:0,r:0,b:0,l:0},rows=[];let n=0;
+      members(g).map(rect).forEach(p=>{if(p.w*p.h>=box.w*box.h*.5)return;const rnd=seeded(p.el.id||String(n)),px=p.x+p.w/2-c.x,py=p.y+p.h/2-c.y;
+        const a=(Math.hypot(px,py)<8?rnd()*Math.PI*2:Math.atan2(py,px))+(rnd()-.5)*1.1,d=40+Math.max(box.w,box.h)*(.22+.18*rnd());
+        const dx=G.clamp(Math.cos(a)*d,8-p.x,W-p.x-p.w-8),dy=G.clamp(Math.sin(a)*d,8-p.y,H-p.y-p.h-8),turn=(rnd()<.5?-1:1)*(6+rnd()*16),pad=Math.max(p.w,p.h)*.2+16;
+        rows.push({el:p.el,css:{'--clay-scatter':'translate('+dx.toFixed(1)+'px, '+dy.toFixed(1)+'px) rotate('+turn.toFixed(1)+'deg)','--clay-wait':(n++*.07).toFixed(2)+'s'}},{el:p.el,state:'hover',anchor:g,css:{transform:'none'}});
+        out.l=Math.max(out.l,box.x-p.x-dx+pad);out.t=Math.max(out.t,box.y-p.y-dy+pad);out.r=Math.max(out.r,p.x+dx+p.w-box.x-box.w+pad);out.b=Math.max(out.b,p.y+dy+p.h-box.y-box.h+pad);});
+      if(!n)return false;
+      rows.push({el:g,css:{'--clay-reach':[out.t,out.r,out.b,out.l].map(v=>-Math.round(Math.max(0,v))+'px').join(' ')}});
+      B.write(rows,'These pieces wait apart, and come together when the pointer reaches them.');return true;}
+    function gather(g){if(!scattered(g))return false;B.write([{el:g,css:{'--clay-reach':null}},...members(g).flatMap(el=>[{el,css:{'--clay-scatter':null,'--clay-wait':null}},{el,state:'hover',anchor:g,css:{transform:null}}])]);return true;}
+    return {isGroup,members,unit,rect,wrap:steady((units,flavor)=>{units.filter(isGroup).forEach(gather);return wrap(units,flavor);}),ungroup:steady(g=>{gather(g);return ungroup(g);}),peel:steady(el=>{gather(el.parentElement);return peel(el);}),fit:steady(fit),resizeState:steady(resizeState),resize:steady(resize),minimum:steady(minimum),describe,scatter:steady(scatter),gather,scattered};
   };
 })();

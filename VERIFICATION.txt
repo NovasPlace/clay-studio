@@ -178,3 +178,40 @@ Idle motion and hover reveals, 2026-10-08 (Claude)
     harness now declares a mouse (and a touch screen for the touch check).
   Regression: split 6/6, revision 9/9, storage 5/5, Sculpt 30/30, groups
     8/8, Layout tools and classic 13/13, npm test 22/22.
+
+Fusion and morphing, 2026-10-08 (Claude)
+  studio.js: every Carve is now 64 points round the edge, read outwards from
+    the centre and starting at the top left corner, so any carve morphs into
+    any other (clip-path eases over 0.6s). New carves: Blob and Diamond. A
+    carve that exists in only one look gets an "open" box (40px larger, so
+    shadows aren't cut) in the others to grow from; it goes with the last
+    carve. Hover carves also apply under @media (hover: none).
+  studio.js: Melt (Goo) for containers in the inspector and Ctrl+K ("goo").
+    The filter is one inline <svg id="clay-goo-defs"> kept in the page while
+    something melts; words and pictures are drawn crisp over the melt.
+  studio.js: Drift idle motion. Scatter rules: --clay-scatter, --clay-wait,
+    --clay-reach, applied only under (hover: hover), no reduced motion, and
+    768px and wider; the group's reach is an ::after under every other piece
+    so the pointer stays on the group while its pieces travel. Holding or
+    measuring brings scattered pieces home, and letting go puts them back
+    without easing (data-clay-calm), so a measurement never sets them flying.
+  studio.js: inspector number fields no longer clamp while you type (typing
+    30 into Size gave 60, because the 3 was raised to the 6px minimum), and
+    Enter commits the edit itself instead of relying on blur.
+  relations.js: Scatter and Gather; peel, ungroup and merging gather first.
+    Every measuring entry point holds the page still.
+  sculpt.js: Scatter and Goo buttons on a selected group.
+  Slow Light (Clay-Pages\slow-light), headless Waterfox 153, real input:
+    10/10, plus a reduced-motion run and a touch-screen run. The lava drawing
+    melts and drifts in the editor and the export; the lamp's parts wait
+    apart, its glow stays as the stage, hovering brings the parts home in
+    drawing order (at 420ms the bulb was 99% home, the tag 9%) and away
+    again; a keyboard nudge elsewhere left the parts still with their rules
+    untouched; cards are blobs that pass through in-between outlines to
+    tickets; the export has no scripts; at 390px the lamp is whole with no
+    sideways overflow; reduced motion and touch screens see it whole, and
+    touch screens see the tickets; after reopening, undo walks back through
+    every saved step (one oldest step had made way under the history budget).
+  Regression: Sculpt 30/30, groups 8/8, split 6/6, storage 5/5, revision
+    9/9, motion 8/8, Layout tools and classic 13/13, npm test 22/22. The
+    classic Clay-Studio copy carries the same changes, minus the bridge.

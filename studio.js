@@ -24,10 +24,27 @@
     flat:{label:'Flat',css:{'box-shadow':'none','border-width':'0'}},
     pill:{label:'Pill',css:{'border-radius':'999px'}}
   };
-  // Carve: shapes cut from the element with clip-path, so the box keeps its place in the layout.
-  var CARVES={none:{label:'None',css:'none'},circle:{label:'Circle',css:'circle(50% at 50% 50%)'},slant:{label:'Slant',css:'polygon(0 0, 100% 0, 100% 82%, 0 100%)'},
-    wave:{label:'Wave',css:'polygon(0 0,100% 0,100% 88%,95% 92%,90% 95%,85% 96%,80% 95%,75% 92%,70% 89%,65% 87%,60% 86%,55% 87%,50% 89%,45% 92%,40% 95%,35% 96%,30% 95%,25% 92%,20% 89%,15% 87%,10% 86%,5% 87%,0 89%)'},
-    arch:{label:'Arch',css:'ellipse(75% 100% at 50% 100%)'},ticket:{label:'Ticket',css:'polygon(0 0,100% 0,100% 40%,96% 50%,100% 60%,100% 100%,0 100%,0 60%,4% 50%,0 40%)'}};
+  // Carve: shapes cut from the element with clip-path, so the box keeps its place in the layout. Every carve is the same
+  // 64 points round the edge, starting at the top left corner and read from the centre outwards, so any carve can morph
+  // into any other. OPEN is the plain box, 40px larger all round so a shadow isn't cut: what a carve grows from.
+  var EDGE=16;
+  function outline(f){var pts=[];for(var s=0;s<4;s++)for(var i=0;i<EDGE;i++){var t=i/EDGE;pts.push(f([[100*t,0],[100,100*t],[100-100*t,100],[0,100-100*t]][s],s,i));}return pts;}
+  function ray(poly){return function(b){var dx=b[0]-50,dy=b[1]-50,best=Infinity;
+    for(var i=0;i<poly.length;i++){var p=poly[i],q=poly[(i+1)%poly.length],ex=q[0]-p[0],ey=q[1]-p[1],den=dx*ey-dy*ex;if(Math.abs(den)<1e-9)continue;
+      var s=((p[0]-50)*ey-(p[1]-50)*ex)/den,u=((p[0]-50)*dy-(p[1]-50)*dx)/den;if(s>0&&u>-1e-9&&u<1+1e-9&&s<best)best=s;}
+    return [50+dx*best,50+dy*best];};}
+  function round1(v){v=Math.round(v*10)/10;return v?v+'%':'0';}
+  function around(f){var pts=[];for(var a=0;a<360;a++){var r=a*Math.PI/180,k=f(r);pts.push([50+50*k*Math.cos(r),50+50*k*Math.sin(r)]);}return pts;}
+  function curve(f){var pts=[[0,0],[100,0]];for(var x=100;x>=0;x--)pts.push([x,f(x)]);return pts;}
+  var SHAPES={circle:['Circle',around(function(){return 1;}),'circle(50% at 50% 50%)'],slant:['Slant',[[0,0],[100,0],[100,82],[0,100]],'polygon(0 0, 100% 0, 100% 82%, 0 100%)'],
+    wave:['Wave',curve(function(x){return 91+5*Math.sin(2*Math.PI*(x-72.5)/50);}),'polygon(0 0,100% 0,100% 88%,95% 92%,90% 95%,85% 96%,80% 95%,75% 92%,70% 89%,65% 87%,60% 86%,55% 87%,50% 89%,45% 92%,40% 95%,35% 96%,30% 95%,25% 92%,20% 89%,15% 87%,10% 86%,5% 87%,0 89%)'],
+    arch:['Arch',[[100,100],[0,100]].concat(Array.apply(null,Array(101)).map(function(_,x){return [x,100-100*Math.sqrt(Math.max(0,1-Math.pow((x-50)/75,2)))];})),'ellipse(75% 100% at 50% 100%)'],
+    ticket:['Ticket',[[0,0],[100,0],[100,40],[96,50],[100,60],[100,100],[0,100],[0,60],[4,50],[0,40]],'polygon(0 0,100% 0,100% 40%,96% 50%,100% 60%,100% 100%,0 100%,0 60%,4% 50%,0 40%)'],
+    blob:['Blob',around(function(r){return Math.pow(Math.pow(Math.abs(Math.cos(r)),4)+Math.pow(Math.abs(Math.sin(r)),4),-.25)*(.9+.05*Math.sin(3*r+.5)+.04*Math.cos(2*r-1));})],diamond:['Diamond',[[50,0],[100,50],[50,100],[0,50]]]};
+  var CARVES={none:{label:'None',css:'none'}};
+  Object.keys(SHAPES).forEach(function(k){var s=SHAPES[k];CARVES[k]={label:s[0],was:s[2],css:'polygon('+outline(ray(s[1])).map(function(p){return round1(p[0])+' '+round1(p[1]);}).join(',')+')'};});
+  var OPEN='polygon('+outline(function(b,s,i){var lo='-40px',hi='calc(100% + 40px)',x=round1(b[0]),y=round1(b[1]);
+    return [[x,lo],[hi,y],[x,hi],[lo,y]][s].map(function(v,j){return i?v:[[lo,lo],[hi,lo],[hi,hi],[lo,hi]][s][j];}).join(' ');}).join(',')+')';
   // States: how a thing looks under the pointer, when reached by keyboard, and while pressed. Exported in this order.
   var STATES={hover:{label:'Hover',css:':hover',when:'under the pointer'},focus:{label:'Focus',css:':focus-visible',when:'when reached by keyboard'},active:{label:'Pressed',css:':active',when:'while pressed'}};
   var ORDER_ST=['hover','focus','active'];
@@ -40,8 +57,17 @@
     sway:{label:'Sway',time:'3.4s ease-in-out',k:'0%,100%{--clay-r:-4deg}50%{--clay-r:4deg}'},
     breathe:{label:'Breathe',time:'3.6s ease-in-out',k:'0%,100%{--clay-s:1}50%{--clay-s:1.05}'},
     spin:{label:'Spin',time:'28s linear',k:'from{--clay-r:0deg}to{--clay-r:360deg}'},
-    scuttle:{label:'Scuttle',time:'2.2s ease-in-out',k:'0%,100%{--clay-dx:0px;--clay-r:0deg}20%{--clay-dx:5px;--clay-r:-3deg}40%{--clay-dx:0px;--clay-r:0deg}60%{--clay-dx:-5px;--clay-r:3deg}80%{--clay-dx:0px;--clay-r:0deg}'}};
+    scuttle:{label:'Scuttle',time:'2.2s ease-in-out',k:'0%,100%{--clay-dx:0px;--clay-r:0deg}20%{--clay-dx:5px;--clay-r:-3deg}40%{--clay-dx:0px;--clay-r:0deg}60%{--clay-dx:-5px;--clay-r:3deg}80%{--clay-dx:0px;--clay-r:0deg}'},
+    drift:{label:'Drift',time:'13s ease-in-out',k:'0%,100%{--clay-dx:0px;--clay-dy:0px}25%{--clay-dx:34px;--clay-dy:-22px}50%{--clay-dx:-10px;--clay-dy:-38px}75%{--clay-dx:-30px;--clay-dy:8px}'}};
   var MOVED={translate:'var(--clay-dx,0px) var(--clay-dy,0px)',rotate:'var(--clay-r,0deg)',scale:'var(--clay-s,1)'};
+  // Scatter: a group's pieces wait apart (--clay-scatter) and come together on the group's hover, one after another
+  // (--clay-wait). The group reaches past its box (--clay-reach), under everything else, so the pointer stays on it while
+  // the pieces travel. Only with a mouse, on a wide screen, for people who haven't asked for less motion; everyone else
+  // sees the whole thing.
+  var APART='(hover: hover) and (prefers-reduced-motion: no-preference)',REACH={content:'""',position:'absolute',inset:'var(--clay-reach)','z-index':'-1',background:'none',padding:'0'};
+  // Goo: the things in a container melt together where they come close. Words and pictures are drawn crisp over the melt.
+  var GOO='<filter id="clay-goo" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceGraphic" stdDeviation="12" result="soft"/><feColorMatrix in="soft" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -9" result="goo"/><feComposite in="SourceGraphic" in2="goo" operator="over"/></filter>';
+  function gooMarkup(){return '<svg id="clay-goo-defs" aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden">'+GOO+'</svg>';}
   function motionValue(el,k){var m=MOTIONS[k],d=parseFloat(m.time),off=parseInt(hash(idOf(el)),36)%997/997*d;return 'clay-'+k+' '+m.time+' -'+off.toFixed(2)+'s infinite';}
   function motionCSS(used){var n=Object.keys(used).filter(function(k){return MOTIONS[k]&&MOTIONS[k].k;});if(!n.length)return '';
     return ['dx','dy'].map(function(v){return '@property --clay-'+v+'{syntax:"<length>";inherits:false;initial-value:0px}';}).concat(['@property --clay-r{syntax:"<angle>";inherits:false;initial-value:0deg}','@property --clay-s{syntax:"<number>";inherits:false;initial-value:1}',
@@ -64,7 +90,10 @@
   function keyOf(el,st,a){return idOf(el)+(st?'~'+st+(a&&a!==el?'@'+idOf(a):''):'');}
   function split(k){var m=/^([^~]+)(?:~([^@]+)(?:@(.+))?)?$/.exec(k);return [m[1],m[2]||'',m[3]||''];}
   function stateRank(k){var s=split(k)[1];return s?ORDER_ST.indexOf(s)+1:0;}
-  function easing(props){return Object.keys(props).filter(function(p){return p!=='background-image';}).map(function(p){return p+' .2s ease';}).join(', ');}
+  // A morph takes its time, and a scattered piece springs home after the ones drawn before it.
+  var SLOW={'clip-path':'.6s cubic-bezier(.65,0,.35,1)'};
+  function easing(props,id){var apart=id&&layers.base[id]&&layers.base[id]['--clay-scatter'];
+    return Object.keys(props).filter(function(p){return p!=='background-image';}).map(function(p){return p+' '+(p==='transform'&&apart?'.9s cubic-bezier(.2,1.2,.3,1) var(--clay-wait, 0s)':SLOW[p]||'.2s ease');}).join(', ');}
   var sheet=mk('style');sheet.id='clay-studio-css';doc.head.appendChild(sheet);
   var rootStyle=root.getAttribute('style')||'';
   root.style.containerType='inline-size';root.style.containerName='clay-page';
@@ -83,19 +112,32 @@
         Object.keys(layers[L][k]).forEach(function(prop){(ease[p[0]]=ease[p[0]]||{})[prop]=1;});
         // forced on while it is being styled, and the real thing once the studio is hidden
         var whose=p[2]?'[data-cs="'+p[2]+'"]':at,inner=p[2]?' '+at:'';
-        // touch screens can't hover, so what hover reveals simply shows there
-        if(p[1]==='hover'&&L==='base'&&'opacity' in layers[L][k])touch.push(whose+inner+'{opacity:'+layers[L][k].opacity+' !important}');
+        // touch screens can't hover, so what hover reveals simply shows there, in the shape hover gives it
+        var shown=touchLook(layers[L][k]);if(p[1]==='hover'&&L==='base'&&shown)touch.push(whose+inner+'{'+decls(shown,true)+'}');
         return 'html[data-clay-state~="'+p[1]+'"] '+whose+inner+',html:not([data-clay-on]) '+whose+STATES[p[1]].css+inner+'{'+d+'}';
       }).filter(Boolean).join('\n');
       if(body)out.push(L==='base'?body:'@container clay-page (max-width: '+BPS[L].max+'px){\n'+body+'\n}');
     });
     // states ease in on the live page; in the studio they snap, so what the inspector reads is never mid-way
-    Object.keys(ease).forEach(function(id){var e=easing(ease[id]);if(e)out.unshift('html:not([data-clay-on]) [data-cs="'+id+'"]{transition:'+e+' !important}');});
+    Object.keys(ease).forEach(function(id){var e=easing(ease[id],id);if(e)out.unshift('html:not([data-clay-on]) [data-cs="'+id+'"]{transition:'+e+' !important}');});
     if(touch.length)out.push('@media (hover: none){\n'+touch.join('\n')+'\n}');
     // a moving piece takes its motion everywhere, at every size, except while it is being held or measured
     var lib=motionCSS(used);if(lib){out.unshift(lib);Object.keys(moving).forEach(function(id){out.push('html:not([data-clay-drag]) [data-cs="'+id+'"]{'+decls(MOVED,true)+'}');});}
+    // a scattered piece is apart only at desktop sizes, and comes together while it is held or measured
+    var apart=marked('--clay-scatter'),reach=marked('--clay-reach');
+    if(apart.length||reach.length)out.push('@media '+APART+'{\n@container clay-page (min-width: 768px){\n'+apart.map(function(id){return 'html:not([data-clay-drag]) [data-cs="'+id+'"]{transform:var(--clay-scatter) !important}';})
+      .concat(reach.map(function(id){return '[data-cs="'+id+'"]::after{'+decls(REACH,true)+'}';})).join('\n')+'\n}\n}');
+    out.push('html[data-clay-calm] [data-cs]{transition:none !important}');
+    goo(ORDER_BP.some(function(L){return Object.keys(layers[L]).some(function(k){return /#clay-goo/.test(layers[L][k].filter||'');});}));
     sheet.textContent=out.join('\n');cache=null;if(!hush)badge();
   }
+  function touchLook(r){var o=null;['opacity','clip-path'].forEach(function(k){if(k in r)(o=o||{})[k]=r[k];});return o;}
+  function marked(prop){return Object.keys(layers.base).filter(function(k){return !split(k)[1]&&layers.base[k][prop];});}
+  // The goo filter lives in the page itself, where url(#clay-goo) can find it, for as long as something melts.
+  var gooSvg=null;
+  function goo(on){gooSvg=gooSvg||doc.getElementById('clay-goo-defs');
+    if(on&&!gooSvg){var t=doc.createElement('template');t.innerHTML=gooMarkup();gooSvg=t.content.firstChild;doc.body.appendChild(gooSvg);}
+    else if(!on&&gooSvg){gooSvg.remove();gooSvg=null;}}
   function setRule(el,props,L,key){
     L=L||bp;var id=key||idOf(el),r=layers[L][id]||(layers[L][id]={});
     Object.keys(props).forEach(function(k){if(props[k]===null||props[k]===undefined)delete r[k];else r[k]=props[k];});
@@ -107,6 +149,14 @@
   // What the rules say about a property at this size, in the state being styled.
   function said(el,k){var v;for(var i=0;i<=ORDER_BP.indexOf(bp);i++){var r=layers[ORDER_BP[i]][dkey(el)];if(r&&k in r)v=r[k];}return v;}
   function setOwn(el,props){if(bp==='base'){setRule(el,props,null,dkey(el));return;}var p={};Object.keys(props).forEach(function(k){var v=props[k];p[k]=v!==null&&v===inherited(el,k)?null:v;});setRule(el,p,null,dkey(el));}
+  // A carve in one look and none in another would snap, so while any look has a carve, the others get OPEN to morph
+  // from; it goes again with the last carve.
+  function carveTo(el,k){
+    var id=idOf(el),mine=dkey(el),other=ORDER_BP.some(function(L){return Object.keys(layers[L]).some(function(key){var c=layers[L][key]['clip-path'];return key!==mine&&split(key)[0]===id&&c&&c!=='none'&&c!==OPEN;});});
+    setOwn(el,{'clip-path':k!=='none'?CARVES[k].css:other?OPEN:inherited(el,'clip-path')?'none':null});
+    if(k!=='none'&&dress&&!ORDER_BP.some(function(L){return layers[L][id]&&layers[L][id]['clip-path'];}))setRule(el,{'clip-path':OPEN},'base',id);
+    if(k==='none'&&!other)ORDER_BP.forEach(function(L){if(layers[L][id]&&layers[L][id]['clip-path']===OPEN)setRule(el,{'clip-path':null},L,id);});
+  }
   // Reasons build up per element (the last few, no repeats), so a rule's comment tells its whole story.
   function because(el,why){if(!why)return;lastWhy=why;var k=bp+':'+dkey(el),list=(reasons[k]||'').split(/(?<=\.) /).filter(Boolean).filter(function(r){return r!==why;});list.push(why);reasons[k]=list.slice(-3).join(' ');}
 
@@ -140,7 +190,7 @@
 
   // What can be arranged: block-level children of any element inside the root.
   var host=null,cache=null;
-  function ours(el){return el===host||el===sheet||/^(SCRIPT|STYLE|TEMPLATE)$/.test(el.tagName);}
+  function ours(el){return el===host||el===sheet||el===gooSvg||/^(SCRIPT|STYLE|TEMPLATE)$/.test(el.tagName);}
   function isBlock(el){var d=getComputedStyle(el).display;return d!=='inline'&&d!=='none'&&d!=='contents';}
   function kids(c){return Array.prototype.filter.call(c.children,function(k){return !ours(k)&&isBlock(k)&&k.getBoundingClientRect().height>0;});}
   function inRoot(el){return !!el&&(el===root||root.contains(el));}
@@ -572,9 +622,10 @@
     function num(label,val,unit,apply,step,min){
       var r=mk('div','irow'),l=mk('label','ilbl scrub',label),i=mk('input');i.type='number';i.value=round(val);i.step=step||1;if(min!==undefined)i.min=min;
       r.appendChild(l);r.appendChild(i);if(unit)r.appendChild(mk('span','unit',unit));p.appendChild(r);
-      var set=function(v){v=Math.max(min!==undefined?min:-1e6,v);i.value=round(v);apply(v);};
-      i.addEventListener('input',function(){if(i.value==='')return;begin();set(+i.value);});
-      i.addEventListener('change',finish);i.addEventListener('keydown',function(e){if(e.key==='Enter'){i.blur();}});
+      // typing is left alone until it's done (a 3 on its way to 30 isn't clamped to the minimum); scrubbing shows each step
+      var floor=function(v){return Math.max(min!==undefined?min:-1e6,v);},set=function(v){v=floor(v);i.value=round(v);apply(v);};
+      i.addEventListener('input',function(){if(i.value==='')return;begin();apply(floor(+i.value));});
+      i.addEventListener('change',finish);i.addEventListener('keydown',function(e){if(e.key==='Enter'){i.blur();finish();}});
       l.addEventListener('pointerdown',function(e){e.preventDefault();begin();var x0=e.clientX,v0=+i.value||0;try{l.setPointerCapture(e.pointerId);}catch(err){}
         var mv=function(ev){set(v0+Math.round((ev.clientX-x0)/2)*(step||1)*(ev.shiftKey?10:1));};
         var up=function(){l.removeEventListener('pointermove',mv);l.removeEventListener('pointerup',up);finish();};
@@ -633,8 +684,11 @@
       write({animation:k==='none'?(inherited(el,'animation')?'none':null):motionValue(el,k)},k==='none'?'You stilled '+nameOf(el)+'.':'You set '+nameOf(el)+' to '+MOTIONS[k].label.toLowerCase()+(dress?' '+STATES[dress].when:' on its own')+'.');});
     sec('Shape');
     var carved=said(el,'clip-path');
-    segs('Carve',Object.keys(CARVES).map(function(k){return {t:CARVES[k].label,v:k,on:k==='none'?!carved||carved==='none':carved===CARVES[k].css};}),function(k){
-      write({'clip-path':k!=='none'?CARVES[k].css:inherited(el,'clip-path')?'none':null},k!=='none'?'You carved '+nameOf(el)+' into '+(k==='arch'?'an ':'a ')+CARVES[k].label.toLowerCase()+'.':'You took the carve off '+nameOf(el)+'.');});
+    segs('Carve',Object.keys(CARVES).map(function(k){return {t:CARVES[k].label,v:k,on:k==='none'?!carved||carved==='none'||carved===OPEN:carved===CARVES[k].css||carved===CARVES[k].was};}),function(k){
+      carveTo(el,k);because(el,k!=='none'?'You carved '+nameOf(el)+' into '+(k==='arch'?'an ':'a ')+CARVES[k].label.toLowerCase()+(dress?' '+STATES[dress].when:'')+'.':'You took the carve off '+nameOf(el)+'.');});
+    if(isC&&!dress){var melted=/#clay-goo/.test(said(el,'filter')||'');
+      segs('Melt',[{t:'None',v:0,on:!melted},{t:'Goo',v:1,on:melted}],function(v){
+        write({filter:v?'url(#clay-goo)':inherited(el,'filter')?'none':null},v?'You let the things in '+nameOf(el)+' melt together where they touch.':'You stopped the things in '+nameOf(el)+' melting.');});}
     var f=mk('div','foot'),pinned=ruleOf(el).position==='sticky',clear={t:'Clear '+(dress?STATES[dress].label+' ':'')+(bp==='base'?'styles':BPS[bp].label+' styles'),run:function(){var k=dkey(el);act(function(){flip(kids(el),function(){delete layers[bp][k];delete reasons[bp+':'+k];render();});});select(el);}};
     (dress?[clear]:[{t:pinned?'📌 Unpin':'📌 Pin',run:function(){pin(el);}},{t:'Duplicate',run:function(){duplicate([el]);}},isC&&el!==root?{t:'Ungroup',run:function(){ungroup(el);}}:null,
      clear,{t:'Remove',cls:'warn',run:function(){remove([el]);}}]).forEach(function(a){if(!a)return;var b=mk('button','btn'+(a.cls?' '+a.cls:''),a.t);b.addEventListener('click',a.run);f.appendChild(b);});
@@ -762,9 +816,13 @@
 
   // ---- Grab ----
   var on=true,tool='grab',drag=null,stretch=null,lasso=null,painting=null,pointer={x:0,y:0},lastHover=null,stuckPress=null;
-  function lift(el){html.setAttribute('data-clay-drag','');var s=el.style;drag.orig={z:s.zIndex,pos:s.position,shadow:s.boxShadow,pe:s.pointerEvents};
+  // Holding pauses motion and brings scattered pieces together, so what is measured is where things really are. Letting go
+  // puts them back without easing, so a measurement never sets them flying.
+  function hold(on){if(on){html.setAttribute('data-clay-drag','');return;}if(!html.hasAttribute('data-clay-drag'))return;
+    html.setAttribute('data-clay-calm','');html.removeAttribute('data-clay-drag');void root.offsetWidth;html.removeAttribute('data-clay-calm');}
+  function lift(el){hold(true);var s=el.style;drag.orig={z:s.zIndex,pos:s.position,shadow:s.boxShadow,pe:s.pointerEvents};
     if(getComputedStyle(el).position==='static')s.position='relative';s.zIndex='60';s.boxShadow='0 24px 60px rgba(20,26,38,.28)';s.pointerEvents='none';}
-  function unlift(el,o){html.removeAttribute('data-clay-drag');var s=el.style;s.zIndex=o.z;s.position=o.pos;s.boxShadow=o.shadow;s.pointerEvents=o.pe;}
+  function unlift(el,o){hold(false);var s=el.style;s.zIndex=o.z;s.position=o.pos;s.boxShadow=o.shadow;s.pointerEvents=o.pe;}
   function overTrash(x,y){var r=ui.trash.getBoundingClientRect();return Math.hypot(x-(r.left+r.width/2),y-(r.top+r.height/2))<r.width*.8;}
   // While something is dragged, every reading (where it would land, what it snaps to, what layout that makes) is
   // taken from the page as it was when the drag began, so the live preview never feeds back into itself.
@@ -995,12 +1053,14 @@
     {ex:['pin','group','duplicate','delete'],re:/^(pin|unpin|group|ungroup|duplicate|delete|remove)$/,t:function(m){return m[1][0].toUpperCase()+m[1].slice(1);},run:function(m,el){
       if(m[1]==='group'){if(multi.length<2)say('Select two or more things first (Shift+click).');else group();}else if(m[1]==='ungroup')ungroup(el);else if(m[1]==='duplicate')duplicate(multi.length?multi:[el]);else if(m[1]==='delete'||m[1]==='remove')remove(multi.length?multi:[el]);else pin(el);}},
     {ex:['edit text'],re:/^edit(?: text)?$/,t:function(){return 'Edit the text';},run:function(m,el){startEdit(textish(el)?el:el.querySelector('h1,h2,h3,h4,p,a,button,blockquote')||el);}},
-    {look:true,ex:['float','sway','breathe','still'],re:/^(float|bob|sway|breathe|spin|scuttle|still)$/,t:function(m){return m[1]==='still'?'Stop it moving':MOTIONS[m[1]].label+', on its own';},
+    {look:true,ex:['float','sway','breathe','still'],re:/^(float|bob|sway|breathe|spin|scuttle|drift|still)$/,t:function(m){return m[1]==='still'?'Stop it moving':MOTIONS[m[1]].label+', on its own';},
       run:function(m,el){act(function(){setOwn(el,{animation:m[1]==='still'?null:motionValue(el,m[1])});because(el,m[1]==='still'?'You stilled '+nameOf(el)+'.':'You set '+nameOf(el)+' to '+m[1]+' on its own.');});select(el);}},
     {ex:['play'],re:/^play$/,t:function(){return 'Play mode';},free:true,run:function(){togglePlay(true);}},
     {ex:['hover','focus','pressed','normal'],re:/^(?:on\s+|when\s+)?(hover|hovered|focus|focused|press|pressed|active|normal)$/,t:function(m){var s=stateWord(m[1]);return s?'Style the '+STATES[s].label.toLowerCase()+' look':'Back to the normal look';},free:true,
       run:function(m,el){if(el&&el!==selected&&!multi.length)select(el);setDress(stateWord(m[1]));}},
-    {look:true,ex:['circle','slant','wave','arch'],re:/^(?:carve\s+)?(circle|slant|wave|arch|ticket)$/,t:function(m){return 'Carve into '+(m[1]==='arch'?'an ':'a ')+m[1];},run:function(m,el){act(function(){setOwn(el,{'clip-path':CARVES[m[1]].css});because(el,'You carved it into '+(m[1]==='arch'?'an ':'a ')+m[1]+'.');});select(el);}},
+    {look:true,ex:['circle','slant','wave','arch'],re:/^(?:carve\s+)?(circle|slant|wave|arch|ticket|blob|diamond)$/,t:function(m){return 'Carve into '+(m[1]==='arch'?'an ':'a ')+m[1];},run:function(m,el){act(function(){carveTo(el,m[1]);because(el,'You carved it into '+(m[1]==='arch'?'an ':'a ')+m[1]+'.');});select(el);}},
+    {ex:['goo','no goo'],re:/^(goo|melt|no goo|unmelt)$/,t:function(m){return /^(goo|melt)$/.test(m[1])?'Melt what’s inside together':'Stop it melting';},run:function(m,el){var c=container(el),on=/^(goo|melt)$/.test(m[1]);
+      act(function(){setOwn(c,{filter:on?'url(#clay-goo)':null});because(c,on?'You let the things in '+nameOf(c)+' melt together where they touch.':'You stopped the things in '+nameOf(c)+' melting.');});select(c);}},
     {ex:['add heading','add text','add button','add image'],re:/^(?:add|insert|new)\s+(heading|title|text|paragraph|button|image|picture|quote|divider|line|section)$/,t:function(m){return 'Add a '+m[1]+' after it';},
       run:function(m,el){insertAfter({title:'heading',paragraph:'text',picture:'image',line:'divider'}[m[1]]||m[1],el);}},
     {ex:['history'],re:/^(history|rewind|timeline)$/,t:function(){return 'History: scrub through changes';},free:true,run:function(){rewind(true);}},
@@ -1555,15 +1615,18 @@
         // a state is the element's own selector with :hover, :focus-visible or :active on the end
         if(st){var aid=split(id)[2],a=aid?byId(aid):null;if(aid&&(!a||!a.isConnected))return;
           Object.keys(r).forEach(function(k){(ease[eid]=ease[eid]||{})[k]=1;});out.push({bp:L,sel:stateSel(el,st,a),css:r,text:reasons[L+':'+id]||''});
-          if(st==='hover'&&L==='base'&&'opacity' in r)out.push({bp:'touch',sel:stateSel(el,st,a,true),css:{opacity:r.opacity},text:'On touch screens, which cannot hover, it simply shows.'});return;}
+          if(st==='hover'&&L==='base'&&touchLook(r))out.push({bp:'touch',sel:stateSel(el,st,a,true),css:touchLook(r),text:'opacity' in r?'On touch screens, which cannot hover, it simply shows.':'On touch screens, which cannot hover, it keeps its hover shape.'});return;}
         if(pid&&rules[pid]&&rules[pid].display){var sibs=kids(p),same=sibs.every(function(s){var sr=rules[s.getAttribute('data-cs')];return sr&&JSON.stringify(sr)===JSON.stringify(r);});
           if(same&&sibs.length>1){sibs.forEach(function(s){done[s.getAttribute('data-cs')]=true;});out.push({bp:L,sel:selectorOf(p)+' > *',css:r,text:'Its children let the layout do the spacing.'});return;}}
         done[id]=true;out.push({bp:L,sel:selectorOf(el),css:r,text:reasons[L+':'+id]||''});
       });
     });
-    Object.keys(ease).forEach(function(id){var el=byId(id);if(el&&el.isConnected&&easing(ease[id]))out.push({bp:'base',sel:selectorOf(el),css:{transition:easing(ease[id])},text:'So it eases between its looks instead of snapping.'});});
+    Object.keys(ease).forEach(function(id){var el=byId(id);if(el&&el.isConnected&&easing(ease[id],id))out.push({bp:'base',sel:selectorOf(el),css:{transition:easing(ease[id],id)},text:'So it eases between its looks instead of snapping.'});});
     // :root makes this win over the phone layout's resets, so the motion plays at every size
     Object.keys(moving).forEach(function(id){var el=byId(id);if(el&&el.isConnected)out.push({bp:'base',sel:':root '+selectorOf(el),css:Object.assign({},MOVED),text:'So its motion has somewhere to go.'});});
+    marked('--clay-scatter').forEach(function(id){var el=byId(id);if(el&&el.isConnected)out.push({bp:'apart',sel:selectorOf(el),css:{transform:'var(--clay-scatter)'},text:'It waits apart until the pointer reaches its group.'});});
+    marked('--clay-reach').forEach(function(id){var el=byId(id);if(el&&el.isConnected)out.push({bp:'apart',sel:selectorOf(el)+'::after',css:Object.assign({},REACH),text:'The group’s reach: anywhere near its scattered pieces brings them together.'});});
+    if(gooSvg)out.push({text:'Add this at the end of <body>, so url(#clay-goo) can find the goo filter: `'+gooMarkup()+'`'});
     return out;
   }
   // New things are handed over as clean HTML: no studio ids or styles, and a stand-in name for placeholder images.
@@ -1572,15 +1635,16 @@
     if(n.tagName==='IMG'&&/^data:/.test(n.getAttribute('src')||''))n.setAttribute('src','your-image.jpg');});return d.outerHTML;}
   function block(c,ind,imp){return (c.text?ind+'/* '+c.text+' */\n':'')+ind+c.sel+' {\n'+Object.keys(c.css).map(function(k){return ind+'  '+k+': '+c.css[k]+(imp?' !important':'')+';';}).join('\n')+'\n'+ind+'}';}
   function cssText(list,imp){
-    var used={},touch=list.filter(function(c){return c.css&&c.bp==='touch';});list.forEach(function(c){var m=c.css&&/clay-(\w+)/.exec(c.css.animation||'');if(m)used[m[1]]=1;});
+    var used={},touch=list.filter(function(c){return c.css&&c.bp==='touch';}),apart=list.filter(function(c){return c.css&&c.bp==='apart';});list.forEach(function(c){var m=c.css&&/clay-(\w+)/.exec(c.css.animation||'');if(m)used[m[1]]=1;});
     return [motionCSS(used)].concat(ORDER_BP.map(function(L){
       var mine=list.filter(function(c){return c.css&&c.bp===L;});if(!mine.length)return '';
       return L==='base'?mine.map(function(c){return block(c,'',imp);}).join('\n\n'):'@media (max-width: '+BPS[L].max+'px) {\n'+mine.map(function(c){return block(c,'  ',imp);}).join('\n\n')+'\n}';
-    }),[touch.length?'@media (hover: none) {\n'+touch.map(function(c){return block(c,'  ',imp);}).join('\n\n')+'\n}':'']).filter(Boolean).join('\n\n');
+    }),[touch.length?'@media (hover: none) {\n'+touch.map(function(c){return block(c,'  ',imp);}).join('\n\n')+'\n}':'',
+      apart.length?'@media '+APART+' and (min-width: '+(BPS.mobile.max+1)+'px) {\n'+apart.map(function(c){return block(c,'  ',imp);}).join('\n\n')+'\n}':'']).filter(Boolean).join('\n\n');
   }
   function agentText(list){
     return '# Layout changes from Clay Studio\nPage: '+location.href+'\nApply these to the source files so the page matches what was arranged by hand. They are ordinary HTML structure and CSS. Free compositions use absolute positions on desktop and a readable stack on phones. Preserve intentional placement, text and links. Rules marked with a screen size go inside that @media query.\n\n'+
-      list.map(function(c,i){var where=c.bp==='touch'?' (only on touch screens: @media (hover: none))':c.bp&&c.bp!=='base'?' (only at '+BPS[c.bp].max+'px and below: @media (max-width: '+BPS[c.bp].max+'px))':'';
+      list.map(function(c,i){var where=c.bp==='touch'?' (only on touch screens: @media (hover: none))':c.bp==='apart'?' (only with a mouse, at '+(BPS.mobile.max+1)+'px and wider, without reduced motion: @media '+APART+' and (min-width: '+(BPS.mobile.max+1)+'px))':c.bp&&c.bp!=='base'?' (only at '+BPS[c.bp].max+'px and below: @media (max-width: '+BPS[c.bp].max+'px))':'';
         return (i+1)+'. '+(c.sel?'`'+c.sel+'`'+where+': ':'')+(c.text||'Style change.')+(c.css?'\n   ```css\n'+block(c,'   ')+'\n   ```':'');}).join('\n');
   }
   // A standalone copy of the page with the layout baked in: the studio, its ids and its preview styling left out.
@@ -1651,11 +1715,12 @@
   window.ClayBridge={
     root:root, begin:snapshot,
     write:function(rows,label){
-      rows.forEach(function(row){var el=row.el,L=row.bp||'base',id=idOf(el),r=layers[L][id]||(layers[L][id]={});
+      rows.forEach(function(row){var el=row.el,L=row.bp||'base',id=row.state?keyOf(el,row.state,row.anchor):idOf(el),r=layers[L][id]||(layers[L][id]={});
         Object.keys(row.css).forEach(function(k){if(row.defaults&&k in r)return;var v=row.css[k];if(v==null)delete r[k];else r[k]=String(v);});
-        if(label)reasons[L+':'+id]=label;});
+        if(!Object.keys(r).length)delete layers[L][id];else if(label)reasons[L+':'+id]=label;});
       render();
     },
+    still:hold,
     commit:function(before,label){lastWhy=label;commit(before);},
     restore:restore,undo:back,redo:forward,
     counts:function(){return {undo:undo.length,redo:redo.length};},
