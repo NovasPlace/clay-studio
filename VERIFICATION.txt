@@ -109,3 +109,27 @@ Revision benchmark fixes, 2026-10-08 (Claude)
   removed it exactly; snapshots no longer try to load pooled pictures.
   Not re-run on Odd Hours itself: its saved project lives in Codex's
   browser storage.
+
+Split drawing, 2026-10-08 (Claude)
+  sculpt.js: Add + > Split drawing, shown when the selected piece is an SVG
+    picture. Each top-level part becomes its own SVG picture (cut out with
+    its own viewBox, sharing the drawing's defs and root attributes), placed
+    where it was drawn (object-fit honoured), named from id, title or
+    aria-label. Scripts, foreignObject, event handlers and javascript: links
+    are removed before the drawing is measured. One undo step. A drawing
+    inside a group is peeled out first.
+  relations.js: 'drawing' groups keep their stacking order and, on a phone,
+    their composition (the group scales with aspect-ratio; parts keep their
+    percentage positions). Pieces released by Peel or Ungroup return to the
+    ordinary phone layout, and a released picture never grows past its
+    desktop width on a phone.
+  sculpt-ui.css: drawing groups are labelled ONE DRAWING in the editor.
+  Low Tide Club, headless Waterfox 153, real input: 6/6. The tide pool split
+  into Pool, Anemone, Sea star and Hermit crab with no visible change;
+  the sea star was pulled out by hand while the other three stayed exactly
+  in place; the export is standalone, keeps the drawing's shape on a 390px
+  phone, and the pulled-out star stays its own size, centred; after
+  reopening, two undos restored the original picture and rules exactly.
+  Regression: revision 9/9, Sculpt 30/30, groups 8/8, Layout tools and
+  classic 13/13 (the classic icon check needed a wait for the drop
+  animation to settle); npm test 22/22.

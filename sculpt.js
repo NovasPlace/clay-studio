@@ -10,7 +10,7 @@
   <button class="tool" data-tool="hand" aria-pressed="true">Grab</button><button class="tool" data-tool="group" aria-pressed="false">Group</button><button class="tool" data-tool="push" aria-pressed="false">Push</button><button class="tool" data-tool="grow" aria-pressed="false">Grow</button><button class="tool" data-tool="flow" aria-pressed="false">Flow</button><button class="tool" data-tool="smooth" aria-pressed="false">Tidy</button><button class="tool" data-tool="paint" aria-pressed="false">Paint</button><button class="tool" data-tool="pin" aria-pressed="false">Pin</button>
   <span class="separator"></span><label class="clay-options">Brush <input type="range" aria-label="Brush size" min="50" max="380" value="160"><output>160</output></label><input class="clay-color" type="color" aria-label="Paint color" value="#adddc5" hidden>
   <button data-action="magnets" aria-pressed="true" title="Attach small text or a button near a card or image">Magnets</button><button data-action="room" aria-pressed="true" title="Move neighbors aside while sculpting">Make room</button><span class="separator"></span><button data-action="undo" disabled>Undo</button><button data-action="redo" disabled>Redo</button><button data-action="add" aria-expanded="false">Add +</button></div><div class="clay-status">Your edits stay in this browser. Export a page to keep a portable copy.</div>
-  <div class="clay-more" hidden><button data-add="text">Add text</button><button data-add="card">Add card</button><button data-add="button">Add button</button><button data-add="image">Add image</button><button data-action="replace" hidden>Replace image</button><button data-action="space">More canvas</button><button data-action="edit">Edit selected text</button></div></div>
+  <div class="clay-more" hidden><button data-add="text">Add text</button><button data-add="card">Add card</button><button data-add="button">Add button</button><button data-add="image">Add image</button><button data-action="replace" hidden>Replace image</button><button data-action="split" hidden>Split drawing</button><button data-action="space">More canvas</button><button data-action="edit">Edit selected text</button></div></div>
   <button class="clay-handle" aria-label="Resize selected piece" title="Drag to resize" hidden></button><canvas class="clay-brush" aria-hidden="true"></canvas><input type="file" class="clay-file" accept="image/*" hidden>
   <dialog class="clay-dialog" aria-label="Export page"><div class="row"><h2>Take your page with you.</h2><button data-action="close-export">Close</button></div><p>Real HTML and CSS. The exported page works without the editor.</p><div class="tabs" role="tablist" aria-label="Export format"><button role="tab" aria-selected="true" data-format="html">Page HTML</button><button role="tab" aria-selected="false" data-format="css">CSS</button><button role="tab" aria-selected="false" data-format="agent">For an agent</button></div><textarea aria-label="Exported source" readonly spellcheck="false"></textarea><div class="actions"><button class="primary" data-action="download">Save HTML file</button><button data-action="copy">Copy current view</button></div><div class="clay-export-state" role="status" aria-live="polite"></div></dialog>`;
   document.body.appendChild(shell);
@@ -30,7 +30,7 @@
     return {id:el.id,el,x:box.left-r.left,y:box.top-r.top,w:box.width,h:box.height,font,pin:style.getPropertyValue('--clay-pin').trim()==='1',minW:Math.min(minW,field.clientWidth),minH:kind==='group'?R.minimum(el).h:(kind==='card'||kind==='block')?needed:30,minFont:font<14?font:14,kind};});}
   function select(el){selected=el;field.querySelectorAll('[data-sculpt-item]').forEach(e=>e.toggleAttribute('data-sculpt-selected',e===el));refresh();}
   function refresh(){const isNarrow=root.clientWidth<=767;qa('[data-tool],[data-action=room],[data-action=magnets],[data-action=add]').forEach(b=>b.disabled=phone||isNarrow);if(isNarrow&&!phone&&!wasNarrow)say('This window shows the phone layout. Widen it to sculpt.');else if(!isNarrow&&wasNarrow&&!phone)say(tips[tool]);wasNarrow=isNarrow;const c=B.counts();q('[data-action=undo]').disabled=!c.undo;q('[data-action=redo]').disabled=!c.redo;
-    q('[data-action=replace]').hidden=!imageOf(selected);
+    q('[data-action=replace]').hidden=!imageOf(selected);q('[data-action=split]').hidden=!isSvg(imageOf(selected));
     items().forEach(e=>e.toggleAttribute('data-sculpt-locked',getComputedStyle(e).getPropertyValue('--clay-pin').trim()==='1'));
     if(selected&&!selected.isConnected)selected=null;else if(selected)selected=R.unit(selected);field.querySelectorAll('[data-sculpt-item]').forEach(e=>e.toggleAttribute('data-sculpt-selected',e===selected));q('.clay-selection').hidden=!selected||!R.isGroup(selected)||phone||live||original;q('.clay-selection span').textContent=selected&&R.isGroup(selected)?R.members(selected).length+' pieces · move and stretch together':'';handle.hidden=!selected||phone||isNarrow||live||original||tool!=='hand';if(!handle.hidden){const r=selected.getBoundingClientRect();handle.style.left=r.right+'px';handle.style.top=r.bottom+'px';}
   }
@@ -106,6 +106,49 @@
   // The one picture a piece shows: the piece itself, or the only picture inside a group.
   function imageOf(el){if(!el||!el.isConnected)return null;if(el.tagName==='IMG')return el;const imgs=el.querySelectorAll('img');return imgs.length===1?imgs[0]:null;}
   function replaceImage(img,file){if(!imageOk(file))return;B.picture(img,file,()=>{q('.clay-more').hidden=true;q('[data-action=add]').setAttribute('aria-expanded','false');select(R.unit(img));say('Picture replaced in the same place and size. Undo brings the old one back.');});}
+  // ---- Split drawing: each top-level part of an SVG picture becomes its own picture, in the same place ----
+  // The parts stay together as a drawing group, which keeps its shape on a phone; Peel, or Alt-drag, pulls one out.
+  function isSvg(img){const s=img&&img.getAttribute('src')||'';return /^data:image\/svg\+xml[,;]/.test(s)||/\.svg([?#]|$)/i.test(s);}
+  async function svgText(img){const s=img.getAttribute('src')||'',m=/^data:image\/svg\+xml(;[^,]*)?,([\s\S]*)$/.exec(s);
+    if(m)return /;base64/i.test(m[1]||'')?new TextDecoder().decode(Uint8Array.from(atob(m[2]),c=>c.charCodeAt(0))):decodeURIComponent(m[2]);
+    const r=await fetch(s);return r.ok?r.text():null;}
+  // Nothing in a drawing gets to run: scripts, foreign content, event handlers and script links are dropped first.
+  function clean(svg){svg.querySelectorAll('script,foreignObject,iframe').forEach(n=>n.remove());
+    [svg,...svg.querySelectorAll('*')].forEach(n=>[...n.attributes].forEach(a=>{if(/^on/i.test(a.name)||/^\s*javascript:/i.test(a.value))n.removeAttribute(a.name);}));return svg;}
+  const SHARED=/^(defs|style)$/i,SKIP=/^(defs|style|title|desc|metadata)$/i,KEEP=/^(viewBox|width|height|x|y|id|class|role|preserveAspectRatio|xmlns(:\w+)?)$|^aria-/i;
+  function partName(el,n,whole){const t=el.querySelector(':scope > title'),l=el.getAttribute('aria-label')||t&&t.textContent.trim()||el.id.replace(/[-_]+/g,' ').trim();
+    return l?l[0].toUpperCase()+l.slice(1):(whole||'Drawing')+', part '+n;}
+  async function splitDrawing(img){
+    let text=null;try{text=await svgText(img);}catch(err){}
+    const svg=text&&new DOMParser().parseFromString(text,'image/svg+xml').documentElement;
+    if(!svg||svg.localName!=='svg'||svg.querySelector('parsererror')){say('This picture could not be read as a drawing.');return;}
+    clean(svg);const parts=[...svg.children].filter(e=>!SKIP.test(e.localName));
+    if(parts.length<2){say('This drawing is one part. Put its shapes in top-level groups, and each group becomes a piece.');return;}
+    const v=(svg.getAttribute('viewBox')||'').trim().split(/[\s,]+/).map(Number),vb=v.length===4&&v.every(Number.isFinite)?{x:v[0],y:v[1],w:v[2],h:v[3]}:{x:0,y:0,w:parseFloat(svg.getAttribute('width'))||300,h:parseFloat(svg.getAttribute('height'))||150};
+    // measure each part where it really renders, including its transforms and strokes
+    const probe=document.importNode(svg,true),hold=document.createElement('div');probe.setAttribute('width',vb.w);probe.setAttribute('height',vb.h);
+    hold.style.cssText='position:fixed;left:0;top:0;visibility:hidden;pointer-events:none;contain:strict;width:'+vb.w+'px;height:'+vb.h+'px';hold.appendChild(probe);document.body.appendChild(hold);
+    const pr=probe.getBoundingClientRect(),k=vb.w/(pr.width||vb.w),live=[...probe.children].filter(e=>!SKIP.test(e.localName));
+    const boxes=live.map(e=>{const r=e.getBoundingClientRect();let pad=1.5;[e,...e.querySelectorAll('*')].forEach(n=>{const s=getComputedStyle(n);if(s.stroke&&s.stroke!=='none')pad=Math.max(pad,parseFloat(s.strokeWidth)/2+1.5);});
+      return r.width||r.height?{x:vb.x+(r.left-pr.left)*k-pad,y:vb.y+(r.top-pr.top)*k-pad,w:r.width*k+pad*2,h:r.height*k+pad*2}:null;});
+    hold.remove();
+    // where the picture's drawing actually sits on the canvas, honouring object-fit
+    const at=R.rect(img),fit=getComputedStyle(img).objectFit;let sx=at.w/vb.w,sy=at.h/vb.h,ox=0,oy=0;
+    if(fit==='contain'||fit==='scale-down'||fit==='cover'){const s=fit==='cover'?Math.max(sx,sy):Math.min(sx,sy);ox=(at.w-vb.w*s)/2;oy=(at.h-vb.h*s)/2;sx=sy=s;}
+    const shared=[...svg.children].filter(e=>SHARED.test(e.localName)).map(e=>new XMLSerializer().serializeToString(e)).join(''),
+      rootAttrs=[...svg.attributes].filter(a=>!KEEP.test(a.name)).map(a=>' '+a.name+'="'+a.value.replace(/&/g,'&amp;').replace(/"/g,'&quot;')+'"').join('');
+    const before=B.begin(),b=bounds(),stamp=Date.now().toString(36),made=[];
+    if(R.isGroup(img.parentElement))R.peel(img);
+    parts.forEach((part,n)=>{const bx=boxes[n];if(!bx)return;
+      const src='<svg xmlns="http://www.w3.org/2000/svg" viewBox="'+[bx.x,bx.y,bx.w,bx.h].map(z=>+z.toFixed(2)).join(' ')+'" width="'+bx.w.toFixed(2)+'" height="'+bx.h.toFixed(2)+'"'+rootAttrs+'>'+shared+new XMLSerializer().serializeToString(part)+'</svg>';
+      const el=document.createElement('img');el.id='piece-'+stamp+'-'+(n+1);el.className=img.className;el.dataset.sculptItem='';el.dataset.kind='image';el.alt=partName(part,n+1,img.alt);
+      el.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(src);img.before(el);B.register(el,'image');made.push(el);
+      const x=at.x+ox+(bx.x-vb.x)*sx,y=at.y+oy+(bx.y-vb.y)*sy;
+      B.write([{el,css:{position:'absolute',left:(x/b.w*100).toFixed(4)+'%',top:y.toFixed(2)+'px',width:(bx.w*sx/b.w*100).toFixed(4)+'%',height:(bx.h*sy).toFixed(2)+'px'}},mobileRules(el)]);});
+    B.retain(img);img.remove();
+    const g=made.length>1?R.wrap(made,'drawing'):made[0];B.commit(before,'You split a drawing into '+made.length+' pieces.');
+    select(g);setTool('peel');say('Split into '+made.length+' pieces, held together as one drawing. Pull any piece out; Grab moves the whole drawing.');refresh();draw();
+  }
   function readImage(file){if(!imageOk(file))return;const reader=new FileReader();reader.onload=()=>add('image',reader.result,file.name);reader.onerror=()=>say('That image could not be read. Try another file.');reader.readAsDataURL(file);}
   function showFormat(f){format=f;qa('[data-format]').forEach(b=>{b.setAttribute('aria-selected',String(b.dataset.format===f));b.setAttribute('aria-pressed',String(b.dataset.format===f));});q('.clay-dialog textarea').value=f==='html'?exportHTML:f==='css'?B.css():B.agent()+'\n\n# Sticky relationships\n'+R.describe().map(g=>g.id+' ('+g.bond+'): keep '+g.members.join(', ')+' together in this order on small screens.').join('\n');}
   function openExport(){if(gesture)finish(true);B.stopMotion();exportHTML=B.html();showFormat('html');q('.clay-export-state').replaceChildren();dialog.showModal();draw();}
@@ -121,6 +164,7 @@
     if(name==='add'){const menu=q('.clay-more');menu.hidden=!menu.hidden;q('[data-action=add]').setAttribute('aria-expanded',String(!menu.hidden));}
     if(name==='space'){const before=B.begin();B.write([{el:field,css:{height:(field.clientHeight+300)+'px'}}],'You added more room to the canvas.');B.commit(before,'Added more canvas.');q('.clay-more').hidden=true;say('Another 300 pixels of room. Your exported page includes it.');refresh();}
     if(name==='edit')textEditor(selected);
+    if(name==='split'){const img=imageOf(selected);q('.clay-more').hidden=true;q('[data-action=add]').setAttribute('aria-expanded','false');if(!isSvg(img)){say('Grab a drawing first: an SVG picture.');return;}await splitDrawing(img);}
     if(name==='replace'){const img=imageOf(selected);if(!img){say('Grab a picture first, then choose Replace image.');return;}fileFor=img;q('.clay-file').click();}
     if(name==='export')openExport();if(name==='close-export')dialog.close();if(name==='download')await saveExport();
     if(name==='copy'){try{await navigator.clipboard.writeText(q('.clay-dialog textarea').value);q('.clay-export-state').textContent='Copied '+(format==='agent'?'the change description':format.toUpperCase())+'.';}catch(err){q('.clay-dialog textarea').select();q('.clay-export-state').textContent='Select and copy the source with Ctrl+C.';}}
