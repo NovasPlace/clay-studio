@@ -40,12 +40,43 @@ Preservation
   The v0.2 playable copy was left unchanged; v0.3 uses a separate folder/port.
 
 Limits
-  No physical phone/touch, Firefox, or Safari testing in this pass.
+  No physical phone/touch or Safari testing. Gecko (Firefox engine): see the
+  Waterfox pass below.
   Polygon lasso selection is unit-tested; the actual UI test used a rectangle.
-  Alt-drag peeling and mid-stroke Escape cancellation were not exercised here.
+  Alt-drag peeling and mid-stroke Escape cancellation: exercised in the
+  Waterfox pass below.
   Collision handling cannot create space in an overfilled canvas; unresolved
   overlaps are reported. It is not a general responsive constraint solver.
   Group wrappers occupy their bounding rectangle, including internal gaps.
   The agent handoff is exported text, not a live agent connection.
   This is a single-page prototype, not a multi-page site builder.
   No GitHub upload or public deployment was performed.
+
+Gecko pass and fixes, 2026-10-08 (Claude)
+  Browser: headless Waterfox 153 (Gecko, reports Firefox/153.0), throwaway
+  profile, 1280x800, driven over WebDriver BiDi with real pointer and key
+  input. 51 checks passed; no page errors and no console errors or warnings.
+  Sculpt: grab and Ctrl+Z, corner resize, Push, Pin (a pinned card stayed
+    exactly in place under Push), Grow, Tidy (one undo step), Paint, Group by
+    box, grabbing one member moved the group, Alt-drag peel (two-piece group
+    dissolved), undo reattached it, Escape mid-stroke restored all five moved
+    pieces with nothing added to undo, Magnet, double-click word editing,
+    Phone, View site, Export dialog (clean standalone HTML with the edit),
+    reload kept the edits.
+  Layout tools: L enters Hover and Esc leaves it; pressing a card takes the
+    card, the next press its heading, and dragging that heading moves only it.
+  Fixed in studio.js and sculpt-ui.css:
+    Pressing a selected heading again grabbed its card instead.
+    In Layout tools, pieces placed by position (the canvas) are selected and
+      styled but not arranged: dragging one leaves it and says why; the canvas
+      takes no drops and gets no grid; group, duplicate, arrow-key reorder and
+      layout commands on those pieces are refused. Verified, including that a
+      heading can still move from one card into another.
+    The Layout tools inspector moves to the left when it would cover the
+      selection, and opens below the top bar (--studio-top), so Back to sculpt
+      and Export stay clickable. Verified.
+    A duplicated element no longer copies its id; copies get the next free
+      number (about -> about-2). Verified on classic.html's engine.
+  Classic page regressions passed: dragging a card beside another still makes
+    a grid; an icon moved into another card can be grabbed again.
+  Not rerun in Chromium after these fixes.

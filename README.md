@@ -26,7 +26,7 @@ An optional port argument is supported: `python serve.py 8921`. The server liste
 
 **Make room** moves neighboring pieces aside where space permits. Text and cards retain minimum dimensions. Crowded layouts can still run out of room; the editor reports that explicitly. Groups are handled as rectangular units, including the space between members.
 
-The navigation, story section, and footer can all be grabbed in Sculpt. Their internal contents remain part of each region; Layout tools provide finer structural controls.
+The navigation, story section, and footer can all be grabbed in Sculpt. Their internal contents remain part of each region; Layout tools provide finer structural controls. In Layout tools, the pieces on the canvas can be selected and styled, and their contents rearranged; the pieces themselves are placed in Sculpt.
 
 ## Save and share
 
@@ -71,8 +71,8 @@ npm run check
 
 See `VERIFICATION.txt` for tested behavior and current limits. This is a single-page prototype. Mobile touch editing, multi-page project management, and arbitrary-site import are not provided.
 
-## GitHub preparation
+## Repository
 
-Source, regression checks, example export, evidence, and launch instructions are included. Runtime exports and local caches are ignored. Repository destination, visibility, and license are still to be chosen before publication.
+A private prototype repository. Source, regression checks, example export, evidence, and launch instructions are included. Runtime exports and local caches are ignored. No license has been chosen yet, so all rights are reserved.
 
 ![Sculpt editor with attached and grouped pieces](docs/evidence/editor.png)
