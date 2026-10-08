@@ -1,0 +1,51 @@
+Clay Studio Sculpt 0.3 - verification, 2026-10-08
+
+Automated geometry and relationship checks
+  8 existing geometry checks; 13 relationship/constraint checks.
+  Covers snapping, brush geometry, containment, collision resolution, pins,
+  magnet candidates, rectangular/polygon lasso selection, group envelopes,
+  nearest free placement, impossible placement, Tidy spacing, readable minima.
+  JavaScript syntax checked for all four runtime scripts.
+  Python server syntax checked.
+
+Actual browser interaction: Codex in-app Chromium browser on Windows
+  Group tool: rectangular selection created a real two-card wrapper.
+  Grab: both members moved together; undo restored their original rectangles.
+  Group creation undo/redo restored the DOM structure.
+  Magnet: small caption attached above the purple card.
+  Peel: member detached; two-member wrapper dissolved; undo reattached it.
+  Merging groups preserved each existing group's internal member order.
+  Peeling from a larger group retained the remaining members.
+  Reload retained saved group identities and relationships.
+  Ungroup released members into the canvas; undo restored the group.
+  Group corner resize increased both cards and their text without overflow.
+  Tidy stroke adjusted both group positions without splitting the groups.
+  A pinned group's rectangle stayed exactly unchanged under the Push brush.
+  Header and footer moved directly in Sculpt; undo restored their positions.
+  Editor phone preview at 390px stacked groups and their children in order.
+  No warning/error console entries observed during these checks.
+
+Standalone export
+  Saved through the editor's Export / Save HTML file controls.
+  Opened the actual saved HTML through the local server.
+  All 13 measured editor/export nodes matched exactly at a 1300px viewport.
+  Evidence: docs/evidence/export-comparison.json.
+  At a 480px viewport, exported groups stacked in order with no horizontal
+  document overflow. Evidence screenshot: docs/evidence/phone.png.
+  The checked export is included as examples/grouped-page.html.
+  Editor runtime scripts and editor controls are absent from that export.
+
+Preservation
+  Claude's source folder was left unchanged.
+  The v0.2 playable copy was left unchanged; v0.3 uses a separate folder/port.
+
+Limits
+  No physical phone/touch, Firefox, or Safari testing in this pass.
+  Polygon lasso selection is unit-tested; the actual UI test used a rectangle.
+  Alt-drag peeling and mid-stroke Escape cancellation were not exercised here.
+  Collision handling cannot create space in an overfilled canvas; unresolved
+  overlaps are reported. It is not a general responsive constraint solver.
+  Group wrappers occupy their bounding rectangle, including internal gaps.
+  The agent handoff is exported text, not a live agent connection.
+  This is a single-page prototype, not a multi-page site builder.
+  No GitHub upload or public deployment was performed.

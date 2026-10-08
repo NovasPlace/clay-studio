@@ -1,0 +1,21 @@
+const assert=require('node:assert/strict');
+const G=require('../sculpt-core.js');
+const bounds={w:1000,h:1000};
+const card={id:'card',kind:'card',x:300,y:200,w:250,h:180,pin:false};
+const caption={id:'caption',kind:'text',x:320,y:400,w:200,h:40,font:18};
+let passed=0;
+function test(name,fn){fn();console.log('PASS '+name);passed++;}
+test('caption snaps below a compatible surface with a real gap',()=>{const m=G.magnet(caption,[card],bounds);assert.equal(m.target,'card');assert.equal(m.side,'below');assert.equal(m.item.y,394);assert.equal(m.item.x,325);assert.equal(G.overlaps(m.item,card),false);});
+test('distant pieces, pinned surfaces and large headings do not attach',()=>{assert.equal(G.magnet({...caption,y:700},[card],bounds),null);assert.equal(G.magnet(caption,[{...card,pin:true}],bounds),null);assert.equal(G.magnet({...caption,font:70},[card],bounds),null);});
+test('magnet placement does not escape canvas edges',()=>{const target={...card,y:810};assert.equal(G.magnet({...caption,y:994},[target],bounds),null);});
+test('equal distance candidates use stable document order',()=>{const m=G.magnet(caption,[card,{...card,id:'second'}],bounds);assert.equal(m.target,'card');});
+test('box gesture selects centers and excludes pinned objects',()=>{const list=[card,{...caption,pin:true},{id:'outside',x:800,y:800,w:100,h:100}];assert.deepEqual(G.lasso(list,[{x:250,y:150},{x:580,y:480}]),['card']);});
+test('freehand polygon excludes items outside its shape',()=>{const list=[{id:'in',x:20,y:20,w:20,h:20},{id:'out',x:160,y:160,w:20,h:20}];assert.deepEqual(G.lasso(list,[{x:0,y:0},{x:200,y:0},{x:0,y:200},{x:0,y:0}]),['in']);});
+test('clicks and thin strokes never create a group',()=>{assert.deepEqual(G.lasso([card],[{x:300,y:300}]),[]);assert.deepEqual(G.lasso([card],[{x:100,y:290},{x:900,y:292}]),[]);});
+test('group envelope preserves the world positions of all members',()=>{const box=G.envelope([card,caption]);assert.deepEqual(box,{x:300,y:200,w:250,h:240});for(const i of [card,caption]){const x=(i.x-box.x)/box.w;assert.equal(box.x+x*box.w,i.x);}});
+test('both magnet partners can stay fixed during collision resolution',()=>{const a={...card},b={...caption,y:394},c={id:'c',x:450,y:300,w:170,h:170};const out=G.separate([a,b,c],bounds,['card','caption']);assert.deepEqual(out.items[0],a);assert.deepEqual(out.items[1],b);assert.equal(out.unresolved,0);});
+test('nearest free placement respects pins and page boundaries',()=>{const i={id:'held',x:320,y:250,w:150,h:80};const out=G.nearestFree(i,[card],bounds);assert.ok(out);assert.equal(G.overlaps(out,card,9),false);assert.ok(out.x>=0&&out.y>=0&&out.x+out.w<=1000);});
+test('impossible placement returns no candidate instead of inventing space',()=>{assert.equal(G.nearestFree({x:0,y:0,w:80,h:80},[{x:0,y:0,w:100,h:100}],{w:100,h:100}),null);});
+test('tidy reduces giant gaps while preserving the row center',()=>{const a={id:'a',x:100,y:200,w:100,h:80},b={id:'b',x:500,y:200,w:100,h:80};const out=G.smooth([a,b],{x:350,y:240},1000,bounds);assert.ok(out[1].x-out[0].x<400);assert.ok(Math.abs((out[0].x+out[1].x)/2-300)<.01);});
+test('shrinking honors readable minimum width and font size',()=>{const i={...caption,minW:140,minH:30,minFont:14};const out=G.grow([i],{x:350,y:410},-9,200,bounds)[0];assert.equal(out.w,140);assert.equal(out.font,14);});
+console.log(passed+' relationship and constraint checks passed');
