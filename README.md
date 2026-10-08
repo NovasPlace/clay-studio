@@ -31,7 +31,7 @@ The navigation, story section, and footer can all be grabbed in Sculpt. Their in
 
 ## Save and share
 
-Completed edits autosave in this browser for this local address, with their Undo history, so Undo still works after you reopen the page (the most recent steps are kept as storage allows). A different port or browser has a separate saved workspace. Use **Export → Save HTML file → Download HTML** for a portable copy. The local server also places saved pages in `exports/`.
+Completed edits autosave in this browser for this local address, with their Undo history, so Undo still works after you reopen the page (the most recent steps are kept as storage allows). The page itself always saves first: if browser storage runs short, older history makes way. Big photos are scaled down to 1600 pixels when added or replaced, so pages stay a sensible size. A different port or browser has a separate saved workspace. Use **Export → Save HTML file → Download HTML** for a portable copy. The local server also places saved pages in `exports/`.
 
 Exported pages contain real HTML and CSS and work without Python, the editor, or a network connection. Groups keep their members together in the phone reading order. `examples/grouped-page.html` is a browser-verified export.
 

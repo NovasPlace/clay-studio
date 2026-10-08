@@ -314,8 +314,11 @@
     [node].concat(Array.prototype.slice.call(node.querySelectorAll('*'))).forEach(function(e){if(!e.style)return;e.style.translate=e.style.scale=e.style.rotate=e.style.transformOrigin='';if(!e.getAttribute('style'))e.removeAttribute('style');});
     return node;
   }
+  // The page always saves first: if storage is full, the saved steps make way for it.
+  function store(data){try{localStorage.setItem(KEY,data);return true;}catch(e){try{localStorage.removeItem(KEY+':steps');localStorage.setItem(KEY,data);return true;}catch(e2){return false;}}}
   function save(){
-    try{var c=cleanCopy(root.cloneNode(true));localStorage.setItem(KEY,JSON.stringify({v:1,fp:fingerprint,html:c.innerHTML,layers:layers,reasons:reasons,nextId:nextId,origin:origin,names:originNames,copyOf:copyOf,edited:edited,texts0:originTexts,inserted:inserted,imaged:imaged}));window.dispatchEvent(new CustomEvent('clay-save',{detail:{ok:true}}));}catch(e){window.dispatchEvent(new CustomEvent('clay-save',{detail:{ok:false}}));}
+    var ok=false;try{var c=cleanCopy(root.cloneNode(true));ok=store(JSON.stringify({v:1,fp:fingerprint,html:c.innerHTML,layers:layers,reasons:reasons,nextId:nextId,origin:origin,names:originNames,copyOf:copyOf,edited:edited,texts0:originTexts,inserted:inserted,imaged:imaged}));}catch(e){}
+    window.dispatchEvent(new CustomEvent('clay-save',{detail:{ok:ok}}));
     clearTimeout(saveSteps.t);saveSteps.t=setTimeout(saveSteps,300);
   }
   var restored=false;
@@ -326,7 +329,7 @@
   })();
   function resetPage(){try{localStorage.removeItem(KEY);localStorage.removeItem(KEY+':steps');}catch(e){}location.reload();}
   // The steps go under their own key, fewer of them until they fit, so the page itself always saves.
-  function saveSteps(){clearTimeout(saveSteps.t);saveSteps.t=0;try{for(var n=40;;n=Math.floor(n/2)){try{localStorage.setItem(KEY+':steps',steps(n));return;}catch(e){if(!n){localStorage.removeItem(KEY+':steps');return;}}}}catch(e){}}
+  function saveSteps(){clearTimeout(saveSteps.t);saveSteps.t=0;try{for(var n=40;;n=Math.floor(n/2)){var s=steps(n);if(n&&s.length>1500000)continue;try{localStorage.setItem(KEY+':steps',s);return;}catch(e){if(!n){localStorage.removeItem(KEY+':steps');return;}}}}catch(e){}}
   function steps(n){var used={},keep=function(s){(s.html.match(/clay-pool:[0-9a-z]+-\d+/g)||[]).forEach(function(m){used[m.slice(10)]=pool[m.slice(10)];});
       return {label:s.label,prevLabel:s.prevLabel,html:s.html,layers:s.layers,reasons:s.reasons,copyOf:s.copyOf,edited:s.edited,inserted:s.inserted,imaged:s.imaged};};
     var o={fp:fingerprint,undo:n?undo.slice(-n).map(keep):[],redo:n?redo.slice(-n).map(keep):[]};o.pool=used;return JSON.stringify(o);}
@@ -1298,12 +1301,13 @@
   }
 
   // ---- Pictures: drop an image file onto an image to swap it, or anywhere else to add it ----
-  function shrinkImage(file,done){
-    var fr=new FileReader();fr.onload=function(){var url=fr.result;if(/svg|gif/.test(file.type)){done(url);return;}
-      // big photos are scaled down, so the autosave and the downloaded page stay a sensible size
+  function shrinkImage(file,done,fail){
+    var fr=new FileReader();fr.onerror=function(){if(fail)fail();};fr.onload=function(){var url=fr.result;if(/svg|gif/.test(file.type)){done(url);return;}
+      // big photos are scaled down, so the autosave and the downloaded page stay a sensible size; PNGs become WebP,
+      // which keeps transparency (a browser that can't write WebP gives back a PNG)
       var im=new Image();im.onload=function(){var k=Math.min(1,1600/Math.max(im.naturalWidth,im.naturalHeight));if(k>=1&&url.length<700000){done(url);return;}
         var cv=doc.createElement('canvas');cv.width=Math.round(im.naturalWidth*k);cv.height=Math.round(im.naturalHeight*k);cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);
-        done(cv.toDataURL(file.type==='image/png'?'image/png':'image/jpeg',.86));};im.onerror=function(){done(url);};im.src=url;};
+        done(cv.toDataURL(file.type==='image/png'?'image/webp':'image/jpeg',.86));};im.onerror=function(){done(url);};im.src=url;};
     fr.readAsDataURL(file);
   }
   // A swapped picture keeps its element, place and size. A description that was only a file name follows the new file.
@@ -1627,6 +1631,7 @@
     register:function(el,kind){var id=idOf(el);made[id]=el;inserted[id]={kind:kind};return id;},
     remove:function(el){var before=snapshot();made[idOf(el)]=el;el.remove();lastWhy='You removed '+nameOf(el)+'.';commit(before);render();},
     mobile:function(v){setBP(v?'mobile':'base');hidePill();},
+    shrink:shrinkImage,
     picture:function(img,file,done){shrinkImage(file,function(url){swapPicture(img,url,file.name);if(done)done();});},
     save:save
   };

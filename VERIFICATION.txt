@@ -133,3 +133,22 @@ Split drawing, 2026-10-08 (Claude)
   Regression: revision 9/9, Sculpt 30/30, groups 8/8, Layout tools and
   classic 13/13 (the classic icon check needed a wait for the drop
   animation to settle); npm test 22/22.
+
+Storage fix, 2026-10-08 (Claude)
+  Found in use: after adding a photo, the editor reported that browser
+  storage was full, so recent changes were not saved. Cause: the saved
+  Undo history had no budget and could crowd out the page's own autosave,
+  and Add image stored photos at full size (history kept a second copy).
+  studio.js: the page saves first; if storage is full, saved history is
+    dropped and the page saved again. Saved history is kept under about
+    1.5 million characters (fewer steps when needed).
+  studio.js / sculpt.js: Add image scales photos to 1600 pixels like Replace
+    image (ClayBridge.shrink); large PNGs are written as WebP, which keeps
+    transparency. Raster files up to 25 MB are accepted; SVG and GIF up to
+    4 MB, unchanged.
+  Headless Waterfox 153, real input: 5/5. A 4 MB, 3000x2000 photo went in at
+    1600x1067 (about 1 MB); 25 moves all saved with history inside its
+    budget; with storage filled to the brim the next move still saved; after
+    reopening the last move was there and Undo stepped back. Regression:
+    split 6/6, revision 9/9, Sculpt 30/30, groups 8/8, Layout tools and
+    classic 13/13, npm test 22/22.
