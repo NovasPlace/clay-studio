@@ -20,10 +20,13 @@
   let tool='hand',radius=160,makeRoom=true,magnets=true,selected=null,gesture=null,lastPoint=null,phone=false,live=false,original=false,format='html',exportHTML='',exportURL='',exportSaving=false;
   let seenError=false,hoveringField=false,wasNarrow=false,fileFor=null;
   function say(text){hint.textContent=text;}
+  // Idle motion pauses while pieces are measured or held, so measuring never picks up a mid-motion offset.
+  const still=on=>document.documentElement.toggleAttribute('data-clay-drag',on);
   function items(){return [...field.querySelectorAll(':scope > [data-sculpt-item]')];}
   function bounds(){return {w:field.clientWidth,h:field.clientHeight};}
   function point(e){const r=field.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top};}
-  function model(){B.stopMotion();const r=field.getBoundingClientRect();return items().map(el=>{
+  function model(){B.stopMotion();still(true);try{return measure();}finally{if(!gesture)still(false);}}
+  function measure(){const r=field.getBoundingClientRect();return items().map(el=>{
     const box=el.getBoundingClientRect(),style=getComputedStyle(el),kind=el.dataset.kind,font=parseFloat(style.fontSize);
     const content=el.lastElementChild,needed=content?content.getBoundingClientRect().bottom-box.top+parseFloat(style.paddingBottom)+2:30;
     const minW=kind==='group'?R.minimum(el).w:kind==='image'?100:kind==='block'?Math.min(box.width,360):kind==='card'?200:font>34?240:el.classList.contains('eyebrow')?200:140;
@@ -57,7 +60,7 @@
     if(el&&(tool==='hand'||resize)&&getComputedStyle(el).getPropertyValue('--clay-pin').trim()==='1'){select(el);say('This piece is pinned. Use Pin to release it first.');return;}
     e.preventDefault();e.stopPropagation();q('.clay-more').hidden=true;q('[data-action=add]').setAttribute('aria-expanded','false');
     const before=B.begin(),all=model();gesture={id:e.pointerId,start:p,prev:p,before,seen:{pos:new Set(),size:new Set()},crowded:G.crowded(all),all:all.map(i=>({...i})),now:all.map(i=>({...i})),path:[p],moved:false,resize,el,painted:new Set(),lastOutcome:0,guides:[],flowValid:false,peel,peeled:false,peelBox:peel?R.rect(el):null,magnet:null,groupSizes:new Map(all.filter(i=>i.kind==='group').map(i=>[i.id,R.resizeState(i.el)]))};
-    if(el&&tool==='hand')select(el);if(tool==='flow'){gesture.flowIds=all.filter(i=>(i.kind==='card'||i.kind==='group')&&!i.pin).map(i=>i.id);say('Drawing a path for '+gesture.flowIds.length+' cards. Keep drawing until they settle.');}
+    still(true);if(el&&tool==='hand')select(el);if(tool==='flow'){gesture.flowIds=all.filter(i=>(i.kind==='card'||i.kind==='group')&&!i.pin).map(i=>i.id);say('Drawing a path for '+gesture.flowIds.length+' cards. Keep drawing until they settle.');}
     try{field.setPointerCapture(e.pointerId);}catch(err){}if(tool==='paint')paint(p);draw();
   }
   function paint(p){const targets=gesture.now.flatMap(i=>i.kind==='group'?R.members(i.el).map(el=>({...R.rect(el),id:el.id,kind:el.dataset.kind,pin:i.pin})):[i]).filter(i=>!i.pin&&G.influence(i,p,radius)>.25&&!gesture.painted.has(i.id));const color=q('.clay-color').value;
@@ -79,7 +82,7 @@
       if(d.resize||tool==='grow'){const measured=model();d.now=measured;const adjusted=settle(measured,held);d.now=adjusted.items;d.lastOutcome=adjusted.unresolved;apply(d.now,label,false,d.all,d.seen);}}
     d.label=label;d.prev=p;say(d.magnet?'Attach '+d.magnet.side+' on release. Hold Shift for free placement.':d.peel?'Released from the group. Keep dragging; Undo brings it back.':d.lastOutcome?'Some pieces touch. Move farther, use a smaller brush, or switch Make room off.':tool==='flow'?'The cards follow your line. Release to keep this arrangement.':tips[tool]);draw();
   }
-  function finish(keep){if(!gesture)return;const d=gesture;gesture=null;try{field.releasePointerCapture(d.id);}catch(err){}
+  function finish(keep){if(!gesture)return;const d=gesture;gesture=null;still(false);try{field.releasePointerCapture(d.id);}catch(err){}
     if(keep&&d.peel&&!d.peeled){select(R.unit(d.el));say('Still attached. Pull farther to peel, or use Ungroup.');draw();return;}
     if(keep&&tool==='group'){const chosen=d.all.filter(i=>(d.groupIds||[]).includes(i.id)).map(i=>i.el);if(chosen.length>=2){const g=R.wrap(chosen);B.commit(d.before,'You looped '+chosen.length+' pieces into a sticky group.');select(g);setTool('hand');say('Stuck together. Grab any member, stretch the corner, or choose Peel a piece.');}else say('Include the centers of at least two unpinned pieces.');refresh();draw();return;}
     if(keep&&d.magnet&&d.moved){const target=items().find(e=>e.id===d.magnet.target);if(target){const g=R.wrap([target,d.el],'magnet');B.commit(d.before,'You attached a piece with magnetism.');select(g);say('Attached. Move them together, or use Peel a piece to pull one free.');refresh();draw();return;}}

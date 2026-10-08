@@ -31,7 +31,21 @@
   // States: how a thing looks under the pointer, when reached by keyboard, and while pressed. Exported in this order.
   var STATES={hover:{label:'Hover',css:':hover',when:'under the pointer'},focus:{label:'Focus',css:':focus-visible',when:'when reached by keyboard'},active:{label:'Pressed',css:':active',when:'while pressed'}};
   var ORDER_ST=['hover','focus','active'];
-  var LIFTS={none:{label:'None',css:null},up2:{label:'2px',css:'translateY(-2px)'},up4:{label:'4px',css:'translateY(-4px)'},up8:{label:'8px',css:'translateY(-8px)'},press:{label:'Press in',css:'translateY(1px) scale(.98)'}};
+  var LIFTS={none:{label:'None',css:null},up2:{label:'2px',css:'translateY(-2px)'},up4:{label:'4px',css:'translateY(-4px)'},up8:{label:'8px',css:'translateY(-8px)'},grow:{label:'Grow',css:'scale(1.04)'},tilt:{label:'Tilt',css:'rotate(-3deg)'},press:{label:'Press in',css:'translateY(1px) scale(.98)'}};
+  // Idle motion: a gentle loop on its own. The keyframes move four registered variables, and a moving piece applies them
+  // through translate, rotate and scale, so a hover transform still adds on top. Each piece starts at its own point in the
+  // loop, so neighbours don't move in step. People who ask for reduced motion get no keyframes at all.
+  var MOTIONS={none:{label:'Still'},float:{label:'Float',time:'5s ease-in-out',k:'0%,100%{--clay-dy:0px}50%{--clay-dy:-8px}'},
+    bob:{label:'Bob',time:'2.6s ease-in-out',k:'0%,100%{--clay-dy:0px;--clay-r:0deg}50%{--clay-dy:-4px;--clay-r:2deg}'},
+    sway:{label:'Sway',time:'3.4s ease-in-out',k:'0%,100%{--clay-r:-4deg}50%{--clay-r:4deg}'},
+    breathe:{label:'Breathe',time:'3.6s ease-in-out',k:'0%,100%{--clay-s:1}50%{--clay-s:1.05}'},
+    spin:{label:'Spin',time:'28s linear',k:'from{--clay-r:0deg}to{--clay-r:360deg}'},
+    scuttle:{label:'Scuttle',time:'2.2s ease-in-out',k:'0%,100%{--clay-dx:0px;--clay-r:0deg}20%{--clay-dx:5px;--clay-r:-3deg}40%{--clay-dx:0px;--clay-r:0deg}60%{--clay-dx:-5px;--clay-r:3deg}80%{--clay-dx:0px;--clay-r:0deg}'}};
+  var MOVED={translate:'var(--clay-dx,0px) var(--clay-dy,0px)',rotate:'var(--clay-r,0deg)',scale:'var(--clay-s,1)'};
+  function motionValue(el,k){var m=MOTIONS[k],d=parseFloat(m.time),off=parseInt(hash(idOf(el)),36)%997/997*d;return 'clay-'+k+' '+m.time+' -'+off.toFixed(2)+'s infinite';}
+  function motionCSS(used){var n=Object.keys(used).filter(function(k){return MOTIONS[k]&&MOTIONS[k].k;});if(!n.length)return '';
+    return ['dx','dy'].map(function(v){return '@property --clay-'+v+'{syntax:"<length>";inherits:false;initial-value:0px}';}).concat(['@property --clay-r{syntax:"<angle>";inherits:false;initial-value:0deg}','@property --clay-s{syntax:"<number>";inherits:false;initial-value:1}',
+      '@media (prefers-reduced-motion: no-preference) {\n'+n.map(function(k){return '  @keyframes clay-'+k+' {'+MOTIONS[k].k+'}';}).join('\n')+'\n}']).join('\n');}
   function snap(v,scale){var b=scale[0];for(var i=1;i<scale.length;i++)if(Math.abs(scale[i]-v)<Math.abs(b-v))b=scale[i];return b;}
   function hash(s){var h=2166136261;for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return (h>>>0).toString(36);}
   function mk(tag,cls,text){var e=doc.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e;}
@@ -60,19 +74,26 @@
   // The key for a thing in the state being styled: inside the thing whose state it is, it's a look on that thing's state.
   function dkey(el){return keyOf(el,dress,dress&&anchor&&anchor!==el&&anchor.contains(el)?anchor:null);}
   function render(){
-    var out=[],ease={};
+    var out=[],ease={},touch=[],used={},moving={};
     ORDER_BP.forEach(function(L){
       var body=Object.keys(layers[L]).sort(function(a,b){return stateRank(a)-stateRank(b);}).map(function(k){
-        var d=decls(layers[L][k],true),p=split(k),at='[data-cs="'+p[0]+'"]';if(!d)return '';if(!p[1])return at+'{'+d+'}';
+        var d=decls(layers[L][k],true),p=split(k),at='[data-cs="'+p[0]+'"]';if(!d)return '';
+        var mo=/clay-(\w+)/.exec(layers[L][k].animation||'');if(mo){used[mo[1]]=1;moving[p[0]]=1;}
+        if(!p[1])return at+'{'+d+'}';
         Object.keys(layers[L][k]).forEach(function(prop){(ease[p[0]]=ease[p[0]]||{})[prop]=1;});
         // forced on while it is being styled, and the real thing once the studio is hidden
         var whose=p[2]?'[data-cs="'+p[2]+'"]':at,inner=p[2]?' '+at:'';
+        // touch screens can't hover, so what hover reveals simply shows there
+        if(p[1]==='hover'&&L==='base'&&'opacity' in layers[L][k])touch.push(whose+inner+'{opacity:'+layers[L][k].opacity+' !important}');
         return 'html[data-clay-state~="'+p[1]+'"] '+whose+inner+',html:not([data-clay-on]) '+whose+STATES[p[1]].css+inner+'{'+d+'}';
       }).filter(Boolean).join('\n');
       if(body)out.push(L==='base'?body:'@container clay-page (max-width: '+BPS[L].max+'px){\n'+body+'\n}');
     });
     // states ease in on the live page; in the studio they snap, so what the inspector reads is never mid-way
     Object.keys(ease).forEach(function(id){var e=easing(ease[id]);if(e)out.unshift('html:not([data-clay-on]) [data-cs="'+id+'"]{transition:'+e+' !important}');});
+    if(touch.length)out.push('@media (hover: none){\n'+touch.join('\n')+'\n}');
+    // a moving piece takes its motion everywhere, at every size, except while it is being held or measured
+    var lib=motionCSS(used);if(lib){out.unshift(lib);Object.keys(moving).forEach(function(id){out.push('html:not([data-clay-drag]) [data-cs="'+id+'"]{'+decls(MOVED,true)+'}');});}
     sheet.textContent=out.join('\n');cache=null;if(!hush)badge();
   }
   function setRule(el,props,L,key){
@@ -110,11 +131,11 @@
   }
   // A state as CSS: the thing's own selector with the state on the end, or its container's state and then the thing,
   // named the shortest way that finds only it inside that container.
-  function stateSel(el,st,a){
-    if(!a||a===el)return selectorOf(el)+STATES[st].css;
+  function stateSel(el,st,a,bare){var s=bare?'':STATES[st].css;
+    if(!a||a===el)return selectorOf(el)+s;
     var t=el.tagName.toLowerCase(),c=[];for(var i=0;i<el.classList.length;i++)c.push('.'+CSS.escape(el.classList[i]),t+'.'+CSS.escape(el.classList[i]));c.push(t);
-    for(var j=0;j<c.length;j++){var m=a.querySelectorAll(c[j]);if(m.length===1&&m[0]===el)return selectorOf(a)+STATES[st].css+' '+c[j];}
-    return selectorOf(a)+STATES[st].css+' '+selectorOf(el);
+    for(var j=0;j<c.length;j++){var m=a.querySelectorAll(c[j]);if(m.length===1&&m[0]===el)return selectorOf(a)+s+' '+c[j];}
+    return selectorOf(a)+s+' '+selectorOf(el);
   }
 
   // What can be arranged: block-level children of any element inside the root.
@@ -131,6 +152,8 @@
   function pickItem(el,deep){
     var ch=[];for(var a=el;a&&a!==root&&inRoot(a);a=a.parentElement)if(isBlock(a))ch.push(a);
     if(!ch.length)return null;if(deep)return ch[0];
+    // inline words (a name in small type, a link) can be picked too, once the box around them is selected, to style them
+    var t=el.nodeType===1?el:el.parentElement,box=ch.find(boxy);if(t&&t!==ch[0]&&TEXT.test(t.tagName)&&!isBlock(t)&&box&&selected&&box.contains(selected))return t;
     if(TEXT.test(ch[0].tagName)&&!boxy(ch[0]))for(var i=1;i<ch.length;i++){if(ch[i].parentElement===root)break;if(boxy(ch[i]))return selected&&ch[i].contains(selected)?ch[0]:ch[i];}
     return ch[0];
   }
@@ -597,11 +620,17 @@
     sec('Fill');
     colors('Background',cs.backgroundColor,function(h){write({'background-color':h,'background-image':'none'},'You filled '+nameOf(el)+' with '+h+'.');});
     num('Radius',parseFloat(cs.borderTopLeftRadius)||0,'px',function(v){write({'border-radius':v+'px'});},2,0);
+    num('Opacity',Math.round(parseFloat(cs.opacity)*100),'%',function(v){v=Math.min(100,Math.round(v));var how=v===0?'hidden':v===100?'fully visible':v+'% visible';
+      write({opacity:v>=100&&!dress?null:String(v/100)},'You made '+nameOf(el)+' '+how+(dress?' '+STATES[dress].when:'')+'.');},5,0);
     segs('Shadow',Object.keys(SHADOWS).map(function(k){return {t:k[0].toUpperCase()+k.slice(1),v:k,on:cs.boxShadow===SHADOWS[k]||k==='none'&&cs.boxShadow==='none'};}),function(k){write({'box-shadow':SHADOWS[k]},'You gave '+nameOf(el)+' a '+k+' shadow.');});
     segs('Border',[{t:'None',v:0,on:!(parseFloat(cs.borderTopWidth)>0)},{t:'Hairline',v:1,on:parseFloat(cs.borderTopWidth)===1},{t:'Bold',v:2,on:parseFloat(cs.borderTopWidth)>=2}],function(w){write(w?{'border-width':w+'px','border-style':'solid','border-color':visible(cs.borderTopColor)&&parseFloat(cs.borderTopWidth)>0?hex(cs.borderTopColor):'rgba(20,26,38,.16)'}:{'border-width':'0'});});
-    if(dress){sec('Move');var lifted=said(el,'transform');
+    sec('Move');
+    if(dress){var lifted=said(el,'transform');
       segs('Lift',Object.keys(LIFTS).map(function(k){return {t:LIFTS[k].label,v:k,on:k==='none'?!lifted||lifted==='none':lifted===LIFTS[k].css};}),function(k){
-        write({transform:LIFTS[k].css||(inherited(el,'transform')?'none':null)},k==='none'?'You took the lift off '+nameOf(el)+'.':'You made '+nameOf(el)+(k==='press'?' press in ':' lift '+LIFTS[k].label+' ')+STATES[dress].when+'.');});}
+        write({transform:LIFTS[k].css||(inherited(el,'transform')?'none':null)},k==='none'?'You took the lift off '+nameOf(el)+'.':'You made '+nameOf(el)+' '+(k==='press'?'press in':k==='grow'||k==='tilt'?k:'lift '+LIFTS[k].label)+' '+STATES[dress].when+'.');});}
+    var idle=(/clay-(\w+)/.exec(said(el,'animation')||'')||[0,'none'])[1];
+    segs(dress?'Motion':'Idle',Object.keys(MOTIONS).map(function(k){return {t:MOTIONS[k].label,v:k,on:k===idle};}),function(k){
+      write({animation:k==='none'?(inherited(el,'animation')?'none':null):motionValue(el,k)},k==='none'?'You stilled '+nameOf(el)+'.':'You set '+nameOf(el)+' to '+MOTIONS[k].label.toLowerCase()+(dress?' '+STATES[dress].when:' on its own')+'.');});
     sec('Shape');
     var carved=said(el,'clip-path');
     segs('Carve',Object.keys(CARVES).map(function(k){return {t:CARVES[k].label,v:k,on:k==='none'?!carved||carved==='none':carved===CARVES[k].css};}),function(k){
@@ -733,9 +762,9 @@
 
   // ---- Grab ----
   var on=true,tool='grab',drag=null,stretch=null,lasso=null,painting=null,pointer={x:0,y:0},lastHover=null,stuckPress=null;
-  function lift(el){var s=el.style;drag.orig={z:s.zIndex,pos:s.position,shadow:s.boxShadow,pe:s.pointerEvents};
+  function lift(el){html.setAttribute('data-clay-drag','');var s=el.style;drag.orig={z:s.zIndex,pos:s.position,shadow:s.boxShadow,pe:s.pointerEvents};
     if(getComputedStyle(el).position==='static')s.position='relative';s.zIndex='60';s.boxShadow='0 24px 60px rgba(20,26,38,.28)';s.pointerEvents='none';}
-  function unlift(el,o){var s=el.style;s.zIndex=o.z;s.position=o.pos;s.boxShadow=o.shadow;s.pointerEvents=o.pe;}
+  function unlift(el,o){html.removeAttribute('data-clay-drag');var s=el.style;s.zIndex=o.z;s.position=o.pos;s.boxShadow=o.shadow;s.pointerEvents=o.pe;}
   function overTrash(x,y){var r=ui.trash.getBoundingClientRect();return Math.hypot(x-(r.left+r.width/2),y-(r.top+r.height/2))<r.width*.8;}
   // While something is dragged, every reading (where it would land, what it snaps to, what layout that makes) is
   // taken from the page as it was when the drag began, so the live preview never feeds back into itself.
@@ -966,6 +995,8 @@
     {ex:['pin','group','duplicate','delete'],re:/^(pin|unpin|group|ungroup|duplicate|delete|remove)$/,t:function(m){return m[1][0].toUpperCase()+m[1].slice(1);},run:function(m,el){
       if(m[1]==='group'){if(multi.length<2)say('Select two or more things first (Shift+click).');else group();}else if(m[1]==='ungroup')ungroup(el);else if(m[1]==='duplicate')duplicate(multi.length?multi:[el]);else if(m[1]==='delete'||m[1]==='remove')remove(multi.length?multi:[el]);else pin(el);}},
     {ex:['edit text'],re:/^edit(?: text)?$/,t:function(){return 'Edit the text';},run:function(m,el){startEdit(textish(el)?el:el.querySelector('h1,h2,h3,h4,p,a,button,blockquote')||el);}},
+    {look:true,ex:['float','sway','breathe','still'],re:/^(float|bob|sway|breathe|spin|scuttle|still)$/,t:function(m){return m[1]==='still'?'Stop it moving':MOTIONS[m[1]].label+', on its own';},
+      run:function(m,el){act(function(){setOwn(el,{animation:m[1]==='still'?null:motionValue(el,m[1])});because(el,m[1]==='still'?'You stilled '+nameOf(el)+'.':'You set '+nameOf(el)+' to '+m[1]+' on its own.');});select(el);}},
     {ex:['play'],re:/^play$/,t:function(){return 'Play mode';},free:true,run:function(){togglePlay(true);}},
     {ex:['hover','focus','pressed','normal'],re:/^(?:on\s+|when\s+)?(hover|hovered|focus|focused|press|pressed|active|normal)$/,t:function(m){var s=stateWord(m[1]);return s?'Style the '+STATES[s].label.toLowerCase()+' look':'Back to the normal look';},free:true,
       run:function(m,el){if(el&&el!==selected&&!multi.length)select(el);setDress(stateWord(m[1]));}},
@@ -1373,7 +1404,7 @@
     e.preventDefault();e.stopPropagation();pointer.x=e.clientX;pointer.y=e.clientY;coachDone();clearMeasure();
     if(playing){pdown={x:e.clientX,y:e.clientY,shift:e.shiftKey,cool:.35,id:e.pointerId};if(ptool==='meteor')pstrike({x:e.clientX+scrollX,y:e.clientY+scrollY},PR);prun();return;}
     if(tool==='grab'&&e.shiftKey){lasso={x0:e.clientX,y0:e.clientY,id:e.pointerId,moved:false,hit:pickItem(e.target,e.altKey)};}
-    else if(tool==='grab'){var el=pickItem(e.target,e.altKey);if(!el)return;if(dress){hidePill();select(el);return;}if(placed(el)){hidePill();select(el);stuckPress={x:e.clientX,y:e.clientY,id:e.pointerId};return;}var before=snapshot(),copy=false,src=el;
+    else if(tool==='grab'){var el=pickItem(e.target,e.altKey);if(!el)return;if(dress||!isBlock(el)){hidePill();select(el);return;}if(placed(el)){hidePill();select(el);stuckPress={x:e.clientX,y:e.clientY,id:e.pointerId};return;}var before=snapshot(),copy=false,src=el;
       // Ctrl+drag pulls a copy out and leaves the original where it was
       if((e.ctrlKey||e.metaKey)&&el!==root){var c=cloneOf(el);el.after(c);render();el=c;copy=true;}
       var r=layoutRect(el);
@@ -1514,21 +1545,25 @@
     var gone={};Object.keys(origin).forEach(function(cid){origin[cid].concat([cid]).forEach(function(id){if(gone[id])return;var el=byId(id);if(!el||!el.isConnected){gone[id]=true;}});});
     Object.keys(gone).forEach(function(id){var parentGone=Object.keys(origin).some(function(cid){return gone[cid]&&cid!==id&&origin[cid].indexOf(id)>=0;});if(!parentGone)out.push({text:'Remove '+(originNames[id]||'an element')+'.'});});
     // rules, per screen size. Children that all got the same rule from their container's layout are written once, as "container > *".
-    var ease={};
+    var ease={},moving={};
     ORDER_BP.forEach(function(L){
       var rules=layers[L],done={};
       Object.keys(rules).sort(function(a,b){return stateRank(a)-stateRank(b);}).forEach(function(id){
         var st=split(id)[1],eid=split(id)[0];
         if(done[id])return;var el=byId(eid);if(!el||!el.isConnected)return;var r=rules[id],p=el.parentElement,pid=p&&p.getAttribute('data-cs');
+        if(/clay-\w+/.test(r.animation||''))moving[eid]=1;
         // a state is the element's own selector with :hover, :focus-visible or :active on the end
         if(st){var aid=split(id)[2],a=aid?byId(aid):null;if(aid&&(!a||!a.isConnected))return;
-          Object.keys(r).forEach(function(k){(ease[eid]=ease[eid]||{})[k]=1;});out.push({bp:L,sel:stateSel(el,st,a),css:r,text:reasons[L+':'+id]||''});return;}
+          Object.keys(r).forEach(function(k){(ease[eid]=ease[eid]||{})[k]=1;});out.push({bp:L,sel:stateSel(el,st,a),css:r,text:reasons[L+':'+id]||''});
+          if(st==='hover'&&L==='base'&&'opacity' in r)out.push({bp:'touch',sel:stateSel(el,st,a,true),css:{opacity:r.opacity},text:'On touch screens, which cannot hover, it simply shows.'});return;}
         if(pid&&rules[pid]&&rules[pid].display){var sibs=kids(p),same=sibs.every(function(s){var sr=rules[s.getAttribute('data-cs')];return sr&&JSON.stringify(sr)===JSON.stringify(r);});
           if(same&&sibs.length>1){sibs.forEach(function(s){done[s.getAttribute('data-cs')]=true;});out.push({bp:L,sel:selectorOf(p)+' > *',css:r,text:'Its children let the layout do the spacing.'});return;}}
         done[id]=true;out.push({bp:L,sel:selectorOf(el),css:r,text:reasons[L+':'+id]||''});
       });
     });
     Object.keys(ease).forEach(function(id){var el=byId(id);if(el&&el.isConnected&&easing(ease[id]))out.push({bp:'base',sel:selectorOf(el),css:{transition:easing(ease[id])},text:'So it eases between its looks instead of snapping.'});});
+    // :root makes this win over the phone layout's resets, so the motion plays at every size
+    Object.keys(moving).forEach(function(id){var el=byId(id);if(el&&el.isConnected)out.push({bp:'base',sel:':root '+selectorOf(el),css:Object.assign({},MOVED),text:'So its motion has somewhere to go.'});});
     return out;
   }
   // New things are handed over as clean HTML: no studio ids or styles, and a stand-in name for placeholder images.
@@ -1537,14 +1572,15 @@
     if(n.tagName==='IMG'&&/^data:/.test(n.getAttribute('src')||''))n.setAttribute('src','your-image.jpg');});return d.outerHTML;}
   function block(c,ind,imp){return (c.text?ind+'/* '+c.text+' */\n':'')+ind+c.sel+' {\n'+Object.keys(c.css).map(function(k){return ind+'  '+k+': '+c.css[k]+(imp?' !important':'')+';';}).join('\n')+'\n'+ind+'}';}
   function cssText(list,imp){
-    return ORDER_BP.map(function(L){
+    var used={},touch=list.filter(function(c){return c.css&&c.bp==='touch';});list.forEach(function(c){var m=c.css&&/clay-(\w+)/.exec(c.css.animation||'');if(m)used[m[1]]=1;});
+    return [motionCSS(used)].concat(ORDER_BP.map(function(L){
       var mine=list.filter(function(c){return c.css&&c.bp===L;});if(!mine.length)return '';
       return L==='base'?mine.map(function(c){return block(c,'',imp);}).join('\n\n'):'@media (max-width: '+BPS[L].max+'px) {\n'+mine.map(function(c){return block(c,'  ',imp);}).join('\n\n')+'\n}';
-    }).filter(Boolean).join('\n\n');
+    }),[touch.length?'@media (hover: none) {\n'+touch.map(function(c){return block(c,'  ',imp);}).join('\n\n')+'\n}':'']).filter(Boolean).join('\n\n');
   }
   function agentText(list){
     return '# Layout changes from Clay Studio\nPage: '+location.href+'\nApply these to the source files so the page matches what was arranged by hand. They are ordinary HTML structure and CSS. Free compositions use absolute positions on desktop and a readable stack on phones. Preserve intentional placement, text and links. Rules marked with a screen size go inside that @media query.\n\n'+
-      list.map(function(c,i){var where=c.bp&&c.bp!=='base'?' (only at '+BPS[c.bp].max+'px and below: @media (max-width: '+BPS[c.bp].max+'px))':'';
+      list.map(function(c,i){var where=c.bp==='touch'?' (only on touch screens: @media (hover: none))':c.bp&&c.bp!=='base'?' (only at '+BPS[c.bp].max+'px and below: @media (max-width: '+BPS[c.bp].max+'px))':'';
         return (i+1)+'. '+(c.sel?'`'+c.sel+'`'+where+': ':'')+(c.text||'Style change.')+(c.css?'\n   ```css\n'+block(c,'   ')+'\n   ```':'');}).join('\n');
   }
   // A standalone copy of the page with the layout baked in: the studio, its ids and its preview styling left out.
@@ -1552,7 +1588,7 @@
     var list=changeList(),d=html.cloneNode(true);
     d.querySelectorAll('clay-studio,#clay-studio-css,script[src*="studio"],[data-clay-ui],[data-clay-runtime],#codex-browser-sidebar-comments-root').forEach(function(n){n.remove();});
     d.removeAttribute('data-sculpting');d.querySelectorAll('[data-sculpt-selected],[data-sculpt-locked]').forEach(function(n){n.removeAttribute('data-sculpt-selected');n.removeAttribute('data-sculpt-locked');});
-    cleanCopy(d);d.querySelectorAll('[data-cs]').forEach(function(n){n.removeAttribute('data-cs');});d.removeAttribute('data-clay-on');d.removeAttribute('data-clay-state');
+    cleanCopy(d);d.querySelectorAll('[data-cs]').forEach(function(n){n.removeAttribute('data-cs');});d.removeAttribute('data-clay-on');d.removeAttribute('data-clay-state');d.removeAttribute('data-clay-drag');
     var r=d.querySelector('[data-studio-root]');if(r){if(rootStyle)r.setAttribute('style',rootStyle);else r.removeAttribute('style');}
     d.style.background=htmlBg;if(!d.getAttribute('style'))d.removeAttribute('style');var b=d.querySelector('body');if(b){b.style.background=bodyBg;if(!b.getAttribute('style'))b.removeAttribute('style');}
     var s=doc.createElement('style');s.id='clay-studio-export';
@@ -1577,7 +1613,7 @@
     var h=ui.help;if(!show){h.style.display='none';return;}
     var rows2=[['Drag','Arrange: beside, above, below'],['Shift + drag','Lasso select'],['Shift + click','Add to selection'],['Ctrl + drag','Pull out a copy'],['Alt + drag','Pick what is inside'],['Tab','Other ways to read a layout'],
       ['G · S · P','Grab · Stretch · Paint'],['1 · 2 · 3','Desktop · Tablet · Phone'],['Ctrl + K  or  /','Commands'],['Ctrl + G','Group'],['Ctrl + Shift + G','Ungroup'],['Ctrl + D','Duplicate'],
-      ['Delete','Remove'],['Arrow keys','Move earlier or later'],['Ctrl + Z · Ctrl + Y','Undo · Redo'],['C','Changes, CSS and export'],['Alt (hold)','Measure distances and spacing'],['Shift while dragging','Move without snapping'],['Esc while dragging','Cancel the drag'],['I','Insert blocks'],['H','History: scrub through changes'],['B (hold)','See the page as it was'],['Drop an image file','Swap or add a picture'],['Double-click text','Edit it in place'],['L','Looks: normal · hover · focus · pressed'],['F','Play: meteors and friends'],['Esc','Close, deselect, hide']];
+      ['Delete','Remove'],['Arrow keys','Move earlier or later'],['Ctrl + Z · Ctrl + Y','Undo · Redo'],['C','Changes, CSS and export'],['Alt (hold)','Measure distances and spacing'],['Shift while dragging','Move without snapping'],['Esc while dragging','Cancel the drag'],['I','Insert blocks'],['H','History: scrub through changes'],['B (hold)','See the page as it was'],['Drop an image file','Swap or add a picture'],['Double-click text','Edit it in place'],['L','Looks: normal · hover · focus · pressed'],['Ctrl + K, “float”','Idle motion: float, sway, breathe…'],['F','Play: meteors and friends'],['Esc','Close, deselect, hide']];
     h.innerHTML='<h3>Clay Studio shortcuts</h3><div class="grid">'+rows2.map(function(r){return '<div class="k"><span>'+r[1]+'</span><kbd>'+r[0]+'</kbd></div>';}).join('')+'</div>';
     h.style.display='block';
   }

@@ -152,3 +152,29 @@ Storage fix, 2026-10-08 (Claude)
     reopening the last move was there and Undo stepped back. Regression:
     split 6/6, revision 9/9, Sculpt 30/30, groups 8/8, Layout tools and
     classic 13/13, npm test 22/22.
+
+Idle motion and hover reveals, 2026-10-08 (Claude)
+  studio.js: Idle motion presets (Float, Bob, Sway, Breathe, Spin, Scuttle)
+    in the inspector and Ctrl+K. Keyframes animate four registered custom
+    properties; a moving piece applies them through translate, rotate and
+    scale, so hover transforms still add on top and a :root rule keeps the
+    motion over the phone layout's resets. Each piece gets its own phase.
+    Keyframes are defined only under prefers-reduced-motion: no-preference.
+    Motion pauses while a piece is held or measured (data-clay-drag), so
+    gestures never pick up a mid-motion offset.
+  studio.js: Opacity in the inspector, in any state; hover opacity is also
+    written under @media (hover: none), so touch screens show what hover
+    reveals. Hover Move gains Grow and Tilt. Inline words (a <small>, a link)
+    can be selected inside a selected box, for styling only.
+  sculpt.js: measuring and held gestures pause idle motion.
+  Low Tide Club, headless Waterfox 153, real input: 8/8, plus 2 environment
+    checks. Scuttle, Sway and Breathe on the split crab, anemone and sea
+    star move in the editor, after a drag (their own rules untouched), in
+    the export (no scripts) and on a 390px phone; the hermit crab card's
+    Latin name is hidden until the card is hovered on the export, with a
+    real pointer; under reduced motion nothing moves; on a touch screen the
+    name simply shows; after reopening, undo restores the split drawing
+    exactly. Headless Firefox reports a touch screen by default, so the
+    harness now declares a mouse (and a touch screen for the touch check).
+  Regression: split 6/6, revision 9/9, storage 5/5, Sculpt 30/30, groups
+    8/8, Layout tools and classic 13/13, npm test 22/22.
