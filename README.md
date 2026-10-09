@@ -4,7 +4,7 @@ Shape a real webpage by hand: grab a piece, push a brush through the layout, gro
 
 ## Run locally
 
-Install Python 3 if it is not already available, then double-click `START-CLAY.cmd` on Windows. Open **http://127.0.0.1:8920/index.html** while the server window is running.
+Install Python 3 if it is not already available, then double-click `START-CLAY.cmd` on Windows. Open **http://127.0.0.1:8920** while the server window is running.
 
 On any platform, run this from the project folder:
 
@@ -12,7 +12,7 @@ On any platform, run this from the project folder:
 python serve.py
 ```
 
-An optional port argument is supported: `python serve.py 8921`. The server listens on this computer only. Python's standard library is sufficient; there are no packages to install.
+An optional port argument is supported: `python serve.py 8921`. The server listens on this computer only, and keeps your pages in the `data` folder here. Python's standard library is sufficient; there are no packages to install.
 
 ## Run on a server (Docker)
 
@@ -24,15 +24,17 @@ cd clay-studio
 docker compose up -d
 ```
 
-Then open **http://your-server's-address:8920**. It restarts with the server, and saved pages are kept in the `clay-studio_clay-data` volume.
+Then open **http://your-server's-address:8920**. It restarts with the server, and your pages are kept in the `clay-studio_clay-data` volume.
 
 Anyone who can reach that port can edit. To ask for a password (any user name works), create a file called `.env` next to `compose.yaml` containing `CLAY_PASSWORD=your-password`, then run `docker compose up -d` again. Keep it on your home network: to reach it from outside, put it behind a reverse proxy with HTTPS rather than opening the port to the internet.
 
-Without Docker, the same settings work directly: `python serve.py --host 0.0.0.0` listens on your network, and the environment variables `CLAY_PASSWORD`, `CLAY_PORT` and `CLAY_DATA` (the folder for saved pages) work the same way. `python serve.py --help` lists them.
+Without Docker, the same settings work directly: `python serve.py --host 0.0.0.0` listens on your network, and the environment variables `CLAY_PASSWORD`, `CLAY_PORT` and `CLAY_DATA` (the folder for your pages) work the same way. `python serve.py --help` lists them.
 
-For now, your work in progress autosaves in each browser, so continue a page in the browser you started it in; exported pages are saved on the server and open anywhere.
+Pages, and their undo history, are saved on the server as you work, so every computer on your network sees the same page. If two computers edit the same page at once, the one that saves second is told to reload rather than overwrite the other's work.
 
 ## Try it
+
+The server opens on **Your pages**. Choose **New page**, give it a name, and start from a simple page or the Clay sample. Each page card can be renamed, duplicated or deleted; a deleted page goes to the trash, with an Undo, and stays in `data/trash` until you remove it yourself. In the editor, **← Pages** goes back to the list.
 
 1. **Grab** a card or the header/footer. Pull the green corner to resize. Full-width regions can move vertically; narrow them to make room for sideways movement.
 2. Turn on **Magnets**, then drag the small caption near a card edge. Release when the attachment hint appears. The two pieces now move together. Hold **Shift** for free placement.
@@ -51,7 +53,7 @@ The navigation, story section, and footer can all be grabbed in Sculpt. Their in
 
 ## Save and share
 
-Completed edits autosave in this browser for this local address, with their Undo history, so Undo still works after you reopen the page (the most recent steps are kept as storage allows). The page itself always saves first: if browser storage runs short, older history makes way. Big photos are scaled down to 1600 pixels when added or replaced, so pages stay a sensible size. A different port or browser has a separate saved workspace. Use **Export → Save HTML file → Download HTML** for a portable copy. The local server also places saved pages in `exports/`.
+Pages made from **Your pages** save on the server as you work (see above). Pages opened any other way, such as `index.html` on its own, autosave in this browser for this address, with their Undo history, so Undo still works after you reopen the page (the most recent steps are kept as storage allows). The page itself always saves first: if browser storage runs short, older history makes way. Big photos are scaled down to 1600 pixels when added or replaced, so pages stay a sensible size. A different port or browser has a separate saved workspace. Use **Export → Save HTML file → Download HTML** for a portable copy. The server also keeps exported pages in `data/exports`.
 
 Exported pages contain real HTML and CSS and work without Python, the editor, or a network connection. Groups keep their members together in the phone reading order. `examples/grouped-page.html` is a browser-verified export.
 
@@ -88,11 +90,11 @@ npm run test:server
 - `sculpt-core.js`: pure geometry and constraint functions.
 - `relations.js`: real DOM grouping, attachment, peeling, and group resizing.
 - `sculpt.js` / `sculpt-ui.css`: direct manipulation controls and feedback.
-- `index.html`: sculptable example page; `classic.html`: original layout editor example.
-- `serve.py`: preview, export and settings (network, password, data folder); `Dockerfile` and `compose.yaml` run it on a server.
+- `pages.html`: the page list; `starters/`: what a new page starts from; `index.html`: sculptable example page (also the Clay sample starter); `classic.html`: original layout editor example.
+- `serve.py`: your pages, the editor, export and settings (network, password, data folder); `Dockerfile` and `compose.yaml` run it on a server.
 - `qa/`: geometry, relationship and server regression checks.
 
-See `VERIFICATION.txt` for tested behavior and current limits. This is a single-page prototype. Mobile touch editing, multi-page project management, and arbitrary-site import are not provided.
+See `VERIFICATION.txt` for tested behavior and current limits. This is a prototype. Pages are separate for now (links between them and exporting a whole site come next); mobile touch editing and arbitrary-site import are not provided.
 
 ## Repository
 

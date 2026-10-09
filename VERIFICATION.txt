@@ -250,3 +250,45 @@ Self-host: Docker and network access, 2026-10-09 (Claude)
   Regression: Sculpt 30/30 through the new server, npm test 22/22.
   Not done yet: work in progress still autosaves per browser; saving pages
     on the server and multiple pages come next.
+
+Pages on the server, 2026-10-09 (Claude)
+  serve.py: / opens the page list (pages.html). Each page lives in
+    data/pages/<name>/: page.html (what it started from), state.json (its
+    saved work and undo history, with a revision number) and meta.json
+    (title, dates). /p/<name>/ opens a page with its saved work inside it
+    (every < escaped), and the runtime beside it. API: list, new (Simple
+    start, the Clay sample, or a copy of a page), rename (title only; the
+    address stays), delete (to data/trash), restore, and save. A save from
+    an older copy than the server's is refused (409) instead of overwriting.
+    Pages and the trash are never served as files. Default data folder is
+    now ./data (ignored by git and Docker builds); exports are in data/exports.
+  studio.js: where work is kept is one small layer (shelf): the browser, as
+    before, or, for a page opened from the list, the server: the saved work
+    arrives with the page, changes go back 0.6s after the last one (only the
+    parts that changed), retries back off to 30s when the server can't be
+    reached, a refused save stops saving and says so, closing with unsaved
+    work asks first, and what fits in a keepalive request goes on the way out.
+  sculpt.js: ← Pages (saves first), and the status line says where work is
+    saved. pages.html: the list, New page dialog, rename, duplicate, delete
+    with Undo. starters/blank.html: Simple start.
+  The classic Clay-Studio copy is unchanged: it has no page server, so
+    server saving could never switch on there.
+  qa/server.test.py: 38/38, adding 18 page checks (names, saving, the 409,
+    partial saves keep the undo steps, saved text that looks like HTML stays
+    inside the page, rename, duplicate, delete and restore, a taken name on
+    restore, odd names, unknown starts, only the runtime beside a page, page
+    files not served even with the data folder inside the app).
+  Headless Waterfox, real input: 11/11. Empty list; New page → Simple start
+    opens the editor, named, with ← Pages; a drag saves to the server; with
+    browser storage wiped the page and its undo come back from the server;
+    undo saves too; another device saving first is reported, not
+    overwritten; ← Pages shows it just edited; rename and duplicate through
+    the dialog; delete with Undo; export from a server page has no scripts
+    and no saved work inside; no errors.
+  Docker (WSL), over the network: 5/5 (opens on the list; a page made and
+    saved; still there with its work after down and up; listed; deleted to
+    the trash).
+  Regression: Sculpt 30/30, groups 8/8, Layout tools and classic 13/13,
+    storage 5/5, split 6/6, revision 9/9, motion 8/8, npm test 22/22.
+  Not done yet: links between pages, a whole-site export, and the home
+    server links starter (it needs a link editor first).

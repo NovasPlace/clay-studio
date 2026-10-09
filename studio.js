@@ -387,26 +387,56 @@
     [node].concat(Array.prototype.slice.call(node.querySelectorAll('*'))).forEach(function(e){if(!e.style)return;e.style.translate=e.style.scale=e.style.rotate=e.style.transformOrigin='';if(!e.getAttribute('style'))e.removeAttribute('style');});
     return node;
   }
+  // Where the work is kept. A page opened from a Clay server's page list arrives with its saved work inside it, so
+  // restoring stays immediate, and changes go back to the server a moment after they're made; if another device saved
+  // first, saving stops and says so rather than overwrite it. Any other page keeps its work in this browser.
+  var shelf=(function(){
+    var tag=doc.getElementById('clay-saved'),got=null;try{got=tag&&JSON.parse(tag.textContent);}catch(e){}
+    if(!got||!got.api)return {where:'browser',get:function(k){return localStorage.getItem(k);},set:function(k,v){localStorage.setItem(k,v);},drop:function(k){localStorage.removeItem(k);},flush:function(done){if(done)done();},leave:function(){}};
+    var held={},dirty={},field={},rev=got.rev||0,timer=0,busy=false,state='saved',wait=2000,waiting=[];
+    held[KEY]=got.page||null;held[KEY+':steps']=got.steps||null;field[KEY]='page';field[KEY+':steps']='steps';
+    function tell(s){state=s;window.dispatchEvent(new CustomEvent('clay-save',{detail:{ok:s!=='stale'&&s!=='offline',where:'server',state:s}}));}
+    function later(ms){clearTimeout(timer);timer=setTimeout(send,ms);}
+    function settle(){var w=waiting;waiting=[];w.forEach(function(f){f();});}
+    function body(){var b={rev:rev};Object.keys(dirty).forEach(function(k){b[field[k]]=held[k];});dirty={};return b;}
+    function send(){
+      clearTimeout(timer);timer=0;if(busy)return;
+      if(state==='stale'||!Object.keys(dirty).length){settle();return;}
+      var b=body();busy=true;tell('saving');
+      fetch(got.api,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(function(r){
+        if(r.status===409)return 'stale';if(!r.ok)throw new Error('HTTP '+r.status);return r.json();
+      }).then(function(o){busy=false;
+        if(o==='stale'){tell('stale');settle();return;}
+        rev=o.rev;wait=2000;if(Object.keys(dirty).length)send();else{tell('saved');settle();}
+      },function(){busy=false;Object.keys(field).forEach(function(k){if(field[k] in b)dirty[k]=1;});tell('offline');later(wait);wait=Math.min(wait*2,30000);});
+    }
+    addEventListener('beforeunload',function(e){if(state!=='stale'&&(busy||Object.keys(dirty).length)){send();e.preventDefault();e.returnValue='';}});
+    return {where:'server',pages:got.pages||'/',
+      get:function(k){return held[k];},set:function(k,v){held[k]=v;dirty[k]=1;later(600);},drop:function(k){held[k]=null;dirty[k]=1;later(600);},
+      flush:function(done){if(done)waiting.push(done);send();},
+      // leaving the page: what fits in a keepalive request goes now, so a quick close doesn't lose the last change
+      leave:function(){if(busy||state==='stale'||!Object.keys(dirty).length)return;var b=JSON.stringify(body());try{fetch(got.api,{method:'PUT',headers:{'Content-Type':'application/json'},body:b,keepalive:b.length<60000});}catch(e){}}};
+  })();
   // The page always saves first: if storage is full, the saved steps make way for it.
-  function store(data){try{localStorage.setItem(KEY,data);return true;}catch(e){try{localStorage.removeItem(KEY+':steps');localStorage.setItem(KEY,data);return true;}catch(e2){return false;}}}
+  function store(data){try{shelf.set(KEY,data);return true;}catch(e){try{shelf.drop(KEY+':steps');shelf.set(KEY,data);return true;}catch(e2){return false;}}}
   function save(){
     var ok=false;try{var c=cleanCopy(root.cloneNode(true));ok=store(JSON.stringify({v:1,fp:fingerprint,html:c.innerHTML,layers:layers,reasons:reasons,nextId:nextId,origin:origin,names:originNames,copyOf:copyOf,edited:edited,texts0:originTexts,inserted:inserted,imaged:imaged}));}catch(e){}
-    window.dispatchEvent(new CustomEvent('clay-save',{detail:{ok:ok}}));
+    if(shelf.where==='browser')window.dispatchEvent(new CustomEvent('clay-save',{detail:{ok:ok,where:'browser'}}));
     clearTimeout(saveSteps.t);saveSteps.t=setTimeout(saveSteps,300);
   }
   var restored=false;
   (function(){
-    try{var s=JSON.parse(localStorage.getItem(KEY)||'null');if(!s||s.v!==1||s.fp!==fingerprint)return;
+    try{var s=JSON.parse(shelf.get(KEY)||'null');if(!s||s.v!==1||s.fp!==fingerprint)return;
       root.innerHTML=s.html;nextId=s.nextId;layers=s.layers;reasons=s.reasons||{};origin=s.origin;originNames=s.names||{};copyOf=s.copyOf||{};edited=s.edited||{};originTexts=s.texts0||{};inserted=s.inserted||{};imaged=s.imaged||{};restored=true;
-      var h=JSON.parse(localStorage.getItem(KEY+':steps')||'null');if(h&&h.fp===fingerprint){Object.assign(pool,h.pool||{});undo=h.undo||[];redo=h.redo||[];}}catch(e){}
+      var h=JSON.parse(shelf.get(KEY+':steps')||'null');if(h&&h.fp===fingerprint){Object.assign(pool,h.pool||{});undo=h.undo||[];redo=h.redo||[];}}catch(e){}
   })();
-  function resetPage(){try{localStorage.removeItem(KEY);localStorage.removeItem(KEY+':steps');}catch(e){}location.reload();}
+  function resetPage(){try{shelf.drop(KEY);shelf.drop(KEY+':steps');}catch(e){}shelf.flush(function(){location.reload();});}
   // The steps go under their own key, fewer of them until they fit, so the page itself always saves.
-  function saveSteps(){clearTimeout(saveSteps.t);saveSteps.t=0;try{for(var n=40;;n=Math.floor(n/2)){var s=steps(n);if(n&&s.length>1500000)continue;try{localStorage.setItem(KEY+':steps',s);return;}catch(e){if(!n){localStorage.removeItem(KEY+':steps');return;}}}}catch(e){}}
+  function saveSteps(){clearTimeout(saveSteps.t);saveSteps.t=0;try{for(var n=40;;n=Math.floor(n/2)){var s=steps(n);if(n&&s.length>1500000)continue;try{shelf.set(KEY+':steps',s);return;}catch(e){if(!n){shelf.drop(KEY+':steps');return;}}}}catch(e){}}
   function steps(n){var used={},keep=function(s){(s.html.match(/clay-pool:[0-9a-z]+-\d+/g)||[]).forEach(function(m){used[m.slice(10)]=pool[m.slice(10)];});
       return {label:s.label,prevLabel:s.prevLabel,html:s.html,layers:s.layers,reasons:s.reasons,copyOf:s.copyOf,edited:s.edited,inserted:s.inserted,imaged:s.imaged};};
     var o={fp:fingerprint,undo:n?undo.slice(-n).map(keep):[],redo:n?redo.slice(-n).map(keep):[]};o.pool=used;return JSON.stringify(o);}
-  addEventListener('pagehide',function(){if(saveSteps.t)saveSteps();});
+  addEventListener('pagehide',function(){if(saveSteps.t)saveSteps();shelf.leave();});
 
   // ---- The studio's own UI: one shadow root on <html>. ----
   host=mk('clay-studio');host.style.cssText='all:initial;position:fixed;left:0;top:0;width:0;height:0;z-index:2147483647';html.appendChild(host);
@@ -1733,6 +1763,7 @@
     remove:function(el){var before=snapshot();made[idOf(el)]=el;el.remove();lastWhy='You removed '+nameOf(el)+'.';commit(before);render();},
     mobile:function(v){setBP(v?'mobile':'base');hidePill();},
     shrink:shrinkImage,
+    where:shelf.where,pages:shelf.pages,flush:shelf.flush,
     picture:function(img,file,done){shrinkImage(file,function(url){swapPicture(img,url,file.name);if(done)done();});},
     save:save
   };
