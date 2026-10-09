@@ -71,7 +71,8 @@ def loopback(host):
 
 
 def now():
-    return datetime.now(timezone.utc).isoformat(timespec='seconds')
+    # milliseconds, so pages made in the same second still have an order (the oldest is the suggested home page)
+    return datetime.now(timezone.utc).isoformat(timespec='milliseconds')
 
 
 def write(path, text):

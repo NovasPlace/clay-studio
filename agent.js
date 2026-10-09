@@ -46,6 +46,11 @@
     if(to[0]==='#'){if(to!=='#'&&!document.getElementById(to.slice(1)))throw new Error('Nothing on this page has the id "'+to.slice(1)+'".');return to;}
     if(/^page:/.test(to)){const n=to.slice(5);if(!pages.some(p=>p.name===n))throw new Error('There is no page "'+n+'". Pages: '+pages.map(p=>p.name).join(', ')+'.');return '../'+n+'/';}
     const w=S.webAddress(to);if(!w)throw new Error('"'+to+'" is not a web address.');return w;}
+  // On a phone the pieces stack in page order, so one an agent adds or moves takes its place in reading order: top to
+  // bottom, and left to right along a row.
+  function reread(el){if(el.parentElement!==field)return;const r=R.rect(el);
+    const next=S.items().find(o=>{if(o===el)return false;const q=R.rect(o);return Math.abs(q.y-r.y)<24?q.x>r.x:q.y>r.y;});
+    if(next)field.insertBefore(el,next);else field.appendChild(el);}
   function grow(bottom,label){const b=S.bounds();if(bottom+40>b.h)B.write([{el:field,css:{height:Math.ceil(bottom+40)+'px'}}],label);}
   function lowest(){return Math.max(0,...S.items().map(e=>{const r=R.rect(e);return r.y+r.h;}));}
   function position(el,a,label,fresh){const r=R.rect(el),b=S.bounds(),group=R.isGroup(el),st=group&&(a.width!=null||a.height!=null)?R.resizeState(el):null;
@@ -76,11 +81,11 @@
     field.appendChild(el);B.register(el,kind);
     const b=S.bounds(),src=a.like!=null?R.rect(find(a.like)):tmpl?R.rect(tmpl):null,w=num(a.width,'width',src?src.w:b.w*.27);
     B.write([{el,css:{position:'absolute',...(kind==='image'?{height:num(a.height,'height',190)+'px'}:{})}},S.mobileRules(el)],label);
-    position(el,{x:num(a.x,'x',b.w*.06),y:num(a.y,'y',lowest()+24),width:w,size:a.size},label,true);return el;}
+    position(el,{x:num(a.x,'x',b.w*.06),y:num(a.y,'y',lowest()+24),width:w,size:a.size},label,true);reread(el);return el;}
   // Everything a request says, one action at a time. Throws with the reason if one can't be done.
   function apply(a,pages,label,touched){if(!a||typeof a!=='object')throw new Error('Each action is an object with "do".');
     switch(a.do){
-      case 'place':{const el=unit(a.piece);position(el,a,label);touched.add(el);return {ok:true};}
+      case 'place':{const el=unit(a.piece);position(el,a,label);if(a.x!=null||a.y!=null)reread(el);touched.add(el);return {ok:true};}
       case 'text':{const el=find(a.piece),t=bit(el,a.part,'text');B.textNow(t,words(a,'text'));if(R.isGroup(R.unit(el)))R.fit(R.unit(el));touched.add(R.unit(el));return {ok:true};}
       case 'link':{const el=find(a.piece),t=bit(el,a.part,'link'),h=address(a.to,pages);B.linkNow(t,h);touched.add(R.unit(el));return {ok:true,link:h};}
       case 'add':{if(a.to!=null)a={...a,to:address(a.to,pages)};const el=make(a,label);touched.add(el);return {ok:true,id:el.id};}

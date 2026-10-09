@@ -441,3 +441,19 @@ Agents on pages nobody has open, 2026-10-09 (Claude)
     8/8, npm test 22/22.
   Test harness (not in the repo): a browser left from an earlier run holding
     the control port made later runs hang; the driver now refuses to start.
+
+The progress site, made in Clay, 2026-10-09 (Claude)
+  A four-page site about Clay Studio's progress (Documents\Clay-Pages\
+    progress\data), built through the agent channel with only the page list
+    open (five requests, each one step under "Claude:"), then finished in
+    the editor with real input: the Group tool lassoed two pictures and
+    Scatter made them wait apart. Export site from the page list: 4 pages,
+    no scripts, links between the files, the scatter as plain CSS, a phone
+    layout in reading order.
+  Found while making it, and fixed:
+  agent.js: a piece an agent adds or moves takes its reading-order place
+    among the pieces, so phones (which stack in page order) read it where it
+    sits, not after the footer. agent 20/20, adding that check.
+  serve.py: page times in milliseconds, so pages made in the same second
+    still have an oldest one (the home page Export site suggests).
+  qa/server.test.py: 75/75, three runs in a row.
