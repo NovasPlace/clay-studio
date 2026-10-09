@@ -14,6 +14,24 @@ python serve.py
 
 An optional port argument is supported: `python serve.py 8921`. The server listens on this computer only. Python's standard library is sufficient; there are no packages to install.
 
+## Run on a server (Docker)
+
+To keep Clay running on a home server and use it from your laptop or any other computer on your network:
+
+```sh
+git clone https://github.com/NovasPlace/clay-studio.git
+cd clay-studio
+docker compose up -d
+```
+
+Then open **http://your-server's-address:8920**. It restarts with the server, and saved pages are kept in the `clay-studio_clay-data` volume.
+
+Anyone who can reach that port can edit. To ask for a password (any user name works), create a file called `.env` next to `compose.yaml` containing `CLAY_PASSWORD=your-password`, then run `docker compose up -d` again. Keep it on your home network: to reach it from outside, put it behind a reverse proxy with HTTPS rather than opening the port to the internet.
+
+Without Docker, the same settings work directly: `python serve.py --host 0.0.0.0` listens on your network, and the environment variables `CLAY_PASSWORD`, `CLAY_PORT` and `CLAY_DATA` (the folder for saved pages) work the same way. `python serve.py --help` lists them.
+
+For now, your work in progress autosaves in each browser, so continue a page in the browser you started it in; exported pages are saved on the server and open anywhere.
+
 ## Try it
 
 1. **Grab** a card or the header/footer. Pull the green corner to resize. Full-width regions can move vertically; narrow them to make room for sideways movement.
@@ -63,6 +81,7 @@ Plain JavaScript, CSS, HTML, and a small Python preview/export server. No build 
 ```sh
 npm test
 npm run check
+npm run test:server
 ```
 
 - `studio.js`: original layout editor plus the bridge used by Sculpt, undo, persistence, and export.
@@ -70,7 +89,8 @@ npm run check
 - `relations.js`: real DOM grouping, attachment, peeling, and group resizing.
 - `sculpt.js` / `sculpt-ui.css`: direct manipulation controls and feedback.
 - `index.html`: sculptable example page; `classic.html`: original layout editor example.
-- `qa/`: geometry and relationship regression checks.
+- `serve.py`: preview, export and settings (network, password, data folder); `Dockerfile` and `compose.yaml` run it on a server.
+- `qa/`: geometry, relationship and server regression checks.
 
 See `VERIFICATION.txt` for tested behavior and current limits. This is a single-page prototype. Mobile touch editing, multi-page project management, and arbitrary-site import are not provided.
 

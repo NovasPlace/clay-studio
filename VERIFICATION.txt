@@ -215,3 +215,38 @@ Fusion and morphing, 2026-10-08 (Claude)
   Regression: Sculpt 30/30, groups 8/8, split 6/6, storage 5/5, revision
     9/9, motion 8/8, Layout tools and classic 13/13, npm test 22/22. The
     classic Clay-Studio copy carries the same changes, minus the bridge.
+
+Self-host: Docker and network access, 2026-10-09 (Claude)
+  serve.py: listens on 127.0.0.1 unless asked (--host or CLAY_HOST); port
+    from the argument, --port or CLAY_PORT; saved pages go to CLAY_DATA
+    (--data), served back from there under /exports/. CLAY_PASSWORD (or
+    CLAY_PASSWORD_FILE) asks for a password with HTTP Basic auth, any user
+    name, compared in constant time. Export accepts only the editor opened
+    from this server, under whatever address it was opened (Origin must
+    match Host). A local server refuses requests addressed to any other name,
+    so a website can't reach it by pointing its own name at 127.0.0.1.
+    /healthz answers without a password and isn't logged. It stops cleanly
+    on SIGTERM, which a container's first process otherwise ignores.
+  Dockerfile (python:3.12-alpine, runs as uid 1000, /data volume, health
+    check), compose.yaml (port 8920, password from .env, restart
+    unless-stopped), .dockerignore (only runtime files go in the image).
+  qa/server.test.py, against real server processes: 20/20. Local by default
+    and not reachable from the network address; rebinding refused (421);
+    pages saved into the data folder, not the app folder, and served back;
+    another website can't save (403); no climbing out of the data folder;
+    --host 0.0.0.0 answers on the network address and its editor can save;
+    the no-password warning; password asked for, wrong one refused, any user
+    name with the right one, saving needs it too, health check doesn't;
+    CLAY_PASSWORD_FILE; CLAY_PORT.
+  Docker 29.1.3 and Compose 2.40.3 in WSL 2 (Ubuntu): the image builds (83.4
+    MB), only runtime files inside, running as uid 1000, healthy. Opened
+    from Windows by the VM's network address in headless Waterfox, real
+    input: 5/5 (editor opens, a card moves, Export saves into the volume,
+    the saved page opens with the card where it was put and no scripts, no
+    errors). Lifecycle: 8/8 (survives restart; down took 0.7s; survives down
+    and up; CLAY_PASSWORD through compose asks for it, the right one opens
+    it, the health check still passes; back without one). When the VM
+    booted again the container came back on its own.
+  Regression: Sculpt 30/30 through the new server, npm test 22/22.
+  Not done yet: work in progress still autosaves per browser; saving pages
+    on the server and multiple pages come next.

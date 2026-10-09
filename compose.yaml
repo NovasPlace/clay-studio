@@ -1,0 +1,19 @@
+# Clay Studio on your own server. In this folder: docker compose up -d
+# Then open http://<your server's address>:8920 from any computer on your network.
+name: clay-studio
+services:
+  clay:
+    build: .
+    container_name: clay-studio
+    ports:
+      - "8920:8920"
+    environment:
+      # Anyone who can reach this port can edit. To ask for a password (any user name works), put
+      # CLAY_PASSWORD=your-password in a file called .env next to this one.
+      CLAY_PASSWORD: ${CLAY_PASSWORD:-}
+    volumes:
+      - clay-data:/data
+    restart: unless-stopped
+
+volumes:
+  clay-data:

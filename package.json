@@ -5,6 +5,7 @@
   "description": "A direct manipulation webpage sculpting prototype",
   "scripts": {
     "test": "node qa/geometry.test.cjs && node qa/relationships.test.cjs",
-    "check": "node --check studio.js && node --check sculpt-core.js && node --check relations.js && node --check sculpt.js"
+    "check": "node --check studio.js && node --check sculpt-core.js && node --check relations.js && node --check sculpt.js",
+    "test:server": "python qa/server.test.py"
   }
 }
