@@ -82,7 +82,7 @@
   // Every element gets a stable id; the generated rules live in one stylesheet keyed by those ids, one layer per size.
   // Elements the studio makes or removes stay reachable by id, so undo and redo can put them back.
   var pristine=root.innerHTML,fingerprint=hash(pristine);
-  var nextId=1,layers={base:{},tablet:{},mobile:{}},reasons={},bp='base',made={},copyOf={},originNames={},origin=null,edited={},originTexts={},inserted={},imaged={};
+  var nextId=1,layers={base:{},tablet:{},mobile:{}},reasons={},bp='base',made={},copyOf={},originNames={},origin=null,edited={},originTexts={},inserted={},imaged={},linked={};
   function idOf(el){if(!el.hasAttribute('data-cs'))el.setAttribute('data-cs','e'+(nextId++));return el.getAttribute('data-cs');}
   function byId(id){return doc.querySelector('[data-cs="'+id+'"]')||made[id]||null;}
   // A rule's key is the element's id, with ~hover, ~focus or ~active on the end for how it looks in that state, and
@@ -337,10 +337,11 @@
   var undo=[],redo=[],lastWhy='',openStep=null,pool={},epoch=0;
   function capture(){var m={};[root].concat(Array.prototype.slice.call(root.querySelectorAll('*'))).forEach(function(c){if(c.children.length&&!ours(c))m[idOf(c)]=Array.prototype.map.call(c.children,idOf);});return m;}
   // Taking a snapshot starts a new action, so the reason heard from here on is that action's label in the history.
-  function snapshot(){var texts={},srcs={};Object.keys(edited).forEach(function(id){var e=byId(id);if(e)texts[id]=e.innerHTML;});
-    Object.keys(imaged).forEach(function(id){var e=byId(id);if(e)srcs[id]=e.getAttribute('src');});lastWhy='';
-    return {layers:JSON.parse(JSON.stringify(layers)),reasons:Object.assign({},reasons),orders:capture(),copyOf:Object.assign({},copyOf),texts:texts,srcs:srcs,
-      epoch:epoch,html:pooled(),edited:Object.assign({},edited),inserted:JSON.parse(JSON.stringify(inserted)),imaged:JSON.parse(JSON.stringify(imaged))};}
+  function snapshot(){var texts={},srcs={},hrefs={};Object.keys(edited).forEach(function(id){var e=byId(id);if(e)texts[id]=e.innerHTML;});
+    Object.keys(imaged).forEach(function(id){var e=byId(id);if(e)srcs[id]=e.getAttribute('src');});
+    Object.keys(linked).forEach(function(id){var e=byId(id);if(e)hrefs[id]=e.getAttribute('href');});lastWhy='';
+    return {layers:JSON.parse(JSON.stringify(layers)),reasons:Object.assign({},reasons),orders:capture(),copyOf:Object.assign({},copyOf),texts:texts,srcs:srcs,hrefs:hrefs,
+      epoch:epoch,html:pooled(),edited:Object.assign({},edited),inserted:JSON.parse(JSON.stringify(inserted)),imaged:JSON.parse(JSON.stringify(imaged)),linked:JSON.parse(JSON.stringify(linked))};}
   function allItems(){var items=[];containers().forEach(function(c){items=items.concat(kids(c));});return items;}
   function restore(s){
     if(!s.orders||s.epoch!==epoch){restoreMarkup(s);return;}
@@ -350,6 +351,9 @@
       // things the studio made after this snapshot leave; things it removed come back through the orders above
       Object.keys(made).forEach(function(id){var el=made[id];if(el.isConnected&&!keep[id]){el.remove();}});
       if(s.srcs)Object.keys(s.srcs).forEach(function(id){var e=byId(id);if(e&&e.getAttribute('src')!==s.srcs[id])e.setAttribute('src',s.srcs[id]);});
+      // a link that had no address before this step loses the one it was given
+      Object.keys(linked).forEach(function(id){var e=byId(id),h=s.hrefs&&id in s.hrefs?s.hrefs[id]:linked[id].orig;if(!e||e.getAttribute('href')===h)return;if(h==null)e.removeAttribute('href');else e.setAttribute('href',h);});
+      if(s.linked)linked=JSON.parse(JSON.stringify(s.linked));
       if(s.texts)Object.keys(s.texts).forEach(function(id){var e=byId(id);if(e&&e.innerHTML!==s.texts[id])e.innerHTML=s.texts[id];});
       layers=JSON.parse(JSON.stringify(s.layers));reasons=Object.assign({},s.reasons);copyOf=Object.assign({},s.copyOf||{});render();
     });
@@ -371,7 +375,7 @@
       old.replaceChildren.apply(old,Array.prototype.slice.call(n.childNodes));return old;});
     root.replaceChildren.apply(root,next);
     layers=JSON.parse(JSON.stringify(s.layers));reasons=Object.assign({},s.reasons);copyOf=Object.assign({},s.copyOf||{});
-    if(s.edited)edited=Object.assign({},s.edited);if(s.inserted)inserted=JSON.parse(JSON.stringify(s.inserted));if(s.imaged)imaged=JSON.parse(JSON.stringify(s.imaged));
+    if(s.edited)edited=Object.assign({},s.edited);if(s.inserted)inserted=JSON.parse(JSON.stringify(s.inserted));if(s.imaged)imaged=JSON.parse(JSON.stringify(s.imaged));if(s.linked)linked=JSON.parse(JSON.stringify(s.linked));
     motions.forEach(function(m,e){if(!e.isConnected)motions.delete(e);});epoch++;render();
   }
   // Each step is labelled with its reason, or with the first thing said about it right after.
@@ -420,21 +424,21 @@
   // The page always saves first: if storage is full, the saved steps make way for it.
   function store(data){try{shelf.set(KEY,data);return true;}catch(e){try{shelf.drop(KEY+':steps');shelf.set(KEY,data);return true;}catch(e2){return false;}}}
   function save(){
-    var ok=false;try{var c=cleanCopy(root.cloneNode(true));ok=store(JSON.stringify({v:1,fp:fingerprint,html:c.innerHTML,layers:layers,reasons:reasons,nextId:nextId,origin:origin,names:originNames,copyOf:copyOf,edited:edited,texts0:originTexts,inserted:inserted,imaged:imaged}));}catch(e){}
+    var ok=false;try{var c=cleanCopy(root.cloneNode(true));ok=store(JSON.stringify({v:1,fp:fingerprint,html:c.innerHTML,layers:layers,reasons:reasons,nextId:nextId,origin:origin,names:originNames,copyOf:copyOf,edited:edited,texts0:originTexts,inserted:inserted,imaged:imaged,linked:linked}));}catch(e){}
     if(shelf.where==='browser')window.dispatchEvent(new CustomEvent('clay-save',{detail:{ok:ok,where:'browser'}}));
     clearTimeout(saveSteps.t);saveSteps.t=setTimeout(saveSteps,300);
   }
   var restored=false;
   (function(){
     try{var s=JSON.parse(shelf.get(KEY)||'null');if(!s||s.v!==1||s.fp!==fingerprint)return;
-      root.innerHTML=s.html;nextId=s.nextId;layers=s.layers;reasons=s.reasons||{};origin=s.origin;originNames=s.names||{};copyOf=s.copyOf||{};edited=s.edited||{};originTexts=s.texts0||{};inserted=s.inserted||{};imaged=s.imaged||{};restored=true;
+      root.innerHTML=s.html;nextId=s.nextId;layers=s.layers;reasons=s.reasons||{};origin=s.origin;originNames=s.names||{};copyOf=s.copyOf||{};edited=s.edited||{};originTexts=s.texts0||{};inserted=s.inserted||{};imaged=s.imaged||{};linked=s.linked||{};restored=true;
       var h=JSON.parse(shelf.get(KEY+':steps')||'null');if(h&&h.fp===fingerprint){Object.assign(pool,h.pool||{});undo=h.undo||[];redo=h.redo||[];}}catch(e){}
   })();
   function resetPage(){try{shelf.drop(KEY);shelf.drop(KEY+':steps');}catch(e){}shelf.flush(function(){location.reload();});}
   // The steps go under their own key, fewer of them until they fit, so the page itself always saves.
   function saveSteps(){clearTimeout(saveSteps.t);saveSteps.t=0;try{for(var n=40;;n=Math.floor(n/2)){var s=steps(n);if(n&&s.length>1500000)continue;try{shelf.set(KEY+':steps',s);return;}catch(e){if(!n){shelf.drop(KEY+':steps');return;}}}}catch(e){}}
   function steps(n){var used={},keep=function(s){(s.html.match(/clay-pool:[0-9a-z]+-\d+/g)||[]).forEach(function(m){used[m.slice(10)]=pool[m.slice(10)];});
-      return {label:s.label,prevLabel:s.prevLabel,html:s.html,layers:s.layers,reasons:s.reasons,copyOf:s.copyOf,edited:s.edited,inserted:s.inserted,imaged:s.imaged};};
+      return {label:s.label,prevLabel:s.prevLabel,html:s.html,layers:s.layers,reasons:s.reasons,copyOf:s.copyOf,edited:s.edited,inserted:s.inserted,imaged:s.imaged,linked:s.linked};};
     var o={fp:fingerprint,undo:n?undo.slice(-n).map(keep):[],redo:n?redo.slice(-n).map(keep):[]};o.pool=used;return JSON.stringify(o);}
   addEventListener('pagehide',function(){if(saveSteps.t)saveSteps();shelf.leave();});
 
@@ -1630,6 +1634,8 @@
       out.push({sel:selectorOf(c),text:'Insert '+what+' into '+nameOf(c.parentElement)+(prev?', right after '+nameOf(prev):', at the start')+'.'});});
     Object.keys(imaged).forEach(function(id){var c=byId(id);if(!c||!c.isConnected||inserted[id]||!imaged[id].file||c.getAttribute('src')===imaged[id].orig)return;
       out.push({sel:selectorOf(c),text:'Replace the picture in '+nameOf(c)+' with the file “'+imaged[id].file+'” (it is embedded in the downloaded page).'});});
+    Object.keys(linked).forEach(function(id){var c=byId(id);if(!c||!c.isConnected||inNew(c)||c.getAttribute('href')===linked[id].orig)return;
+      out.push({sel:selectorOf(c),text:c.hasAttribute('href')?'Point the link '+nameOf(c)+' to `'+c.getAttribute('href')+'`.':'Take the address off '+nameOf(c)+'.'});});
     Object.keys(edited).forEach(function(id){var el=byId(id);if(!el||!el.isConnected||inNew(el))return;var now2=el.textContent;if(now2===originTexts[id])return;
       out.push({sel:selectorOf(el),text:'Change the text of '+(originNames[id]||nameOf(el))+' to: “'+now2.trim().replace(/\s+/g,' ')+'”'});});
     var gone={};Object.keys(origin).forEach(function(cid){origin[cid].concat([cid]).forEach(function(id){if(gone[id])return;var el=byId(id);if(!el||!el.isConnected){gone[id]=true;}});});
@@ -1684,6 +1690,8 @@
     d.removeAttribute('data-sculpting');d.querySelectorAll('[data-sculpt-selected],[data-sculpt-locked]').forEach(function(n){n.removeAttribute('data-sculpt-selected');n.removeAttribute('data-sculpt-locked');});
     cleanCopy(d);d.querySelectorAll('[data-cs]').forEach(function(n){n.removeAttribute('data-cs');});d.removeAttribute('data-clay-on');d.removeAttribute('data-clay-state');d.removeAttribute('data-clay-drag');
     var r=d.querySelector('[data-studio-root]');if(r){if(rootStyle)r.setAttribute('style',rootStyle);else r.removeAttribute('style');}
+    // a link to another page of the site points at that page's exported file: ../about/ becomes about.html
+    d.querySelectorAll('a[href^="../"]').forEach(function(a){var m=/^\.\.\/([a-z0-9][a-z0-9-]{0,47})\/(#.*)?$/.exec(a.getAttribute('href'));if(m)a.setAttribute('href',m[1]+'.html'+(m[2]||''));});
     d.style.background=htmlBg;if(!d.getAttribute('style'))d.removeAttribute('style');var b=d.querySelector('body');if(b){b.style.background=bodyBg;if(!b.getAttribute('style'))b.removeAttribute('style');}
     var s=doc.createElement('style');s.id='clay-studio-export';
     s.textContent='\n/* Layout from Clay Studio. !important so these win over the original stylesheet; fold them into your source to drop it. */\n'+cssText(list,true)+'\n';
@@ -1765,6 +1773,8 @@
     shrink:shrinkImage,
     where:shelf.where,pages:shelf.pages,flush:shelf.flush,
     picture:function(img,file,done){shrinkImage(file,function(url){swapPicture(img,url,file.name);if(done)done();});},
+    link:function(el,href,where){var id=idOf(el);if(!linked[id])linked[id]={orig:el.getAttribute('href')};var before=snapshot();
+      if(href==null)el.removeAttribute('href');else el.setAttribute('href',href);lastWhy='You pointed '+nameOf(el)+' to '+(where||href)+'.';commit(before);},
     save:save
   };
 

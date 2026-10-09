@@ -10,15 +10,18 @@
   <button class="tool" data-tool="hand" aria-pressed="true">Grab</button><button class="tool" data-tool="group" aria-pressed="false">Group</button><button class="tool" data-tool="push" aria-pressed="false">Push</button><button class="tool" data-tool="grow" aria-pressed="false">Grow</button><button class="tool" data-tool="flow" aria-pressed="false">Flow</button><button class="tool" data-tool="smooth" aria-pressed="false">Tidy</button><button class="tool" data-tool="paint" aria-pressed="false">Paint</button><button class="tool" data-tool="pin" aria-pressed="false">Pin</button>
   <span class="separator"></span><label class="clay-options">Brush <input type="range" aria-label="Brush size" min="50" max="380" value="160"><output>160</output></label><input class="clay-color" type="color" aria-label="Paint color" value="#adddc5" hidden>
   <button data-action="magnets" aria-pressed="true" title="Attach small text or a button near a card or image">Magnets</button><button data-action="room" aria-pressed="true" title="Move neighbors aside while sculpting">Make room</button><span class="separator"></span><button data-action="undo" disabled>Undo</button><button data-action="redo" disabled>Redo</button><button data-action="add" aria-expanded="false">Add +</button></div><div class="clay-status">Your edits stay in this browser. Export a page to keep a portable copy.</div>
-  <div class="clay-more" hidden><button data-add="text">Add text</button><button data-add="card">Add card</button><button data-add="button">Add button</button><button data-add="image">Add image</button><button data-action="replace" hidden>Replace image</button><button data-action="split" hidden>Split drawing</button><button data-action="space">More canvas</button><button data-action="edit">Edit selected text</button></div></div>
+  <div class="clay-more" hidden><button data-add="text">Add text</button><button data-add="card">Add card</button><button data-add="button">Add button</button><button data-add="image">Add image</button><button data-action="replace" hidden>Replace image</button><button data-action="split" hidden>Split drawing</button><button data-action="space">More canvas</button><button data-action="edit">Edit selected text</button><button data-action="link" hidden title="Point this button or link at another page, a part of this page, or a web address (K)">Link to…</button></div></div>
   <button class="clay-handle" aria-label="Resize selected piece" title="Drag to resize" hidden></button><canvas class="clay-brush" aria-hidden="true"></canvas><input type="file" class="clay-file" accept="image/*" hidden>
-  <dialog class="clay-dialog" aria-label="Export page"><div class="row"><h2>Take your page with you.</h2><button data-action="close-export">Close</button></div><p>Real HTML and CSS. The exported page works without the editor.</p><div class="tabs" role="tablist" aria-label="Export format"><button role="tab" aria-selected="true" data-format="html">Page HTML</button><button role="tab" aria-selected="false" data-format="css">CSS</button><button role="tab" aria-selected="false" data-format="agent">For an agent</button></div><textarea aria-label="Exported source" readonly spellcheck="false"></textarea><div class="actions"><button class="primary" data-action="download">Save HTML file</button><button data-action="copy">Copy current view</button></div><div class="clay-export-state" role="status" aria-live="polite"></div></dialog>`;
+  <dialog class="clay-dialog" aria-label="Export page"><div class="row"><h2>Take your page with you.</h2><button data-action="close-export">Close</button></div><p>Real HTML and CSS. The exported page works without the editor.</p><div class="tabs" role="tablist" aria-label="Export format"><button role="tab" aria-selected="true" data-format="html">Page HTML</button><button role="tab" aria-selected="false" data-format="css">CSS</button><button role="tab" aria-selected="false" data-format="agent">For an agent</button></div><textarea aria-label="Exported source" readonly spellcheck="false"></textarea><div class="actions"><button class="primary" data-action="download">Save HTML file</button><button data-action="copy">Copy current view</button></div><div class="clay-export-state" role="status" aria-live="polite"></div><p class="clay-site-note" hidden>This saves this page. To save all your pages together, with the links between them, use <b>Export site</b> on ← Pages.</p></dialog>
+  <dialog class="clay-dialog clay-link" aria-labelledby="clay-link-title"><form method="dialog"><h2 id="clay-link-title">Where should this go?</h2><div class="clay-link-list"></div>
+  <fieldset><legend>A web address</legend><label><input type="radio" name="to" value="web"><input type="text" class="clay-link-web" aria-label="Web address" placeholder="https://example.com or 192.168.1.20:8096" autocomplete="off" spellcheck="false"></label></fieldset>
+  <p class="clay-link-error" role="alert"></p><div class="actions"><button class="primary" value="ok">Keep link</button><button value="cancel" formnovalidate>Cancel</button></div></form></dialog>`;
   document.body.appendChild(shell);
   const q=s=>shell.querySelector(s),qa=s=>[...shell.querySelectorAll(s)];
-  const hint=q('.clay-hint'),canvas=q('canvas'),ctx=canvas.getContext('2d'),handle=q('.clay-handle'),dialog=q('dialog');
+  const hint=q('.clay-hint'),canvas=q('canvas'),ctx=canvas.getContext('2d'),handle=q('.clay-handle'),dialog=q('dialog'),linkDialog=q('.clay-link');
   const tips={group:'Drag a box or draw a loop around pieces to stick them together. Pinned pieces stay out.',peel:'Pull a piece 56 pixels out of its group to release it. Escape cancels.',hand:'Grab any piece. Pull its corner to resize. Double-click words to edit.',push:'Brush across the page to push pieces. Pinned pieces stay put.',grow:'Brush upward to grow. Brush downward to shrink. Text stays readable.',flow:'Draw a long path across the canvas. Unpinned cards will follow your stroke.',smooth:'Tidy gently closes oversized gaps and evens nearby rows. Your groups stay together.',paint:'Choose a color, then brush it onto pieces.',pin:'Click a piece to pin it. Click again to let it move.'};
   let tool='hand',radius=160,makeRoom=true,magnets=true,selected=null,gesture=null,lastPoint=null,phone=false,live=false,original=false,format='html',exportHTML='',exportURL='',exportSaving=false;
-  let seenError=false,hoveringField=false,wasNarrow=false,fileFor=null;
+  let seenError=false,hoveringField=false,wasNarrow=false,fileFor=null,pointed=null,linking=null;
   function say(text){hint.textContent=text;}
   // Idle motion pauses while pieces are measured or held, so measuring never picks up a mid-motion offset.
   const still=on=>B.still(on);
@@ -33,7 +36,7 @@
     return {id:el.id,el,x:box.left-r.left,y:box.top-r.top,w:box.width,h:box.height,font,pin:style.getPropertyValue('--clay-pin').trim()==='1',minW:Math.min(minW,field.clientWidth),minH:kind==='group'?R.minimum(el).h:(kind==='card'||kind==='block')?needed:30,minFont:font<14?font:14,kind};});}
   function select(el){selected=el;field.querySelectorAll('[data-sculpt-item]').forEach(e=>e.toggleAttribute('data-sculpt-selected',e===el));refresh();}
   function refresh(){const isNarrow=root.clientWidth<=767;qa('[data-tool],[data-action=room],[data-action=magnets],[data-action=add]').forEach(b=>b.disabled=phone||isNarrow);if(isNarrow&&!phone&&!wasNarrow)say('This window shows the phone layout. Widen it to sculpt.');else if(!isNarrow&&wasNarrow&&!phone)say(tips[tool]);wasNarrow=isNarrow;const c=B.counts();q('[data-action=undo]').disabled=!c.undo;q('[data-action=redo]').disabled=!c.redo;
-    q('[data-action=replace]').hidden=!imageOf(selected);q('[data-action=split]').hidden=!isSvg(imageOf(selected));
+    q('[data-action=replace]').hidden=!imageOf(selected);q('[data-action=split]').hidden=!isSvg(imageOf(selected));q('[data-action=link]').hidden=!linksIn(selected).length;
     items().forEach(e=>e.toggleAttribute('data-sculpt-locked',getComputedStyle(e).getPropertyValue('--clay-pin').trim()==='1'));
     if(selected&&!selected.isConnected)selected=null;else if(selected)selected=R.unit(selected);field.querySelectorAll('[data-sculpt-item]').forEach(e=>e.toggleAttribute('data-sculpt-selected',e===selected));q('.clay-selection').hidden=!selected||!R.isGroup(selected)||phone||live||original;q('.clay-selection span').textContent=selected&&R.isGroup(selected)?R.members(selected).length+' pieces · move and stretch together':'';if(selected&&R.isGroup(selected)){q('[data-action=scatter]').setAttribute('aria-pressed',String(R.scattered(selected)));q('[data-action=goo]').setAttribute('aria-pressed',String(/#clay-goo/.test(getComputedStyle(selected).filter)));}handle.hidden=!selected||phone||isNarrow||live||original||tool!=='hand';if(!handle.hidden){const r=selected.getBoundingClientRect();handle.style.left=r.right+'px';handle.style.top=r.bottom+'px';}
   }
@@ -52,7 +55,7 @@
   // Make room clears space for what is moving; pairs that were already crowded before the gesture are left as they were.
   function settle(list,held,crowded=gesture&&gesture.crowded){if(!makeRoom)return {items:list,unresolved:0};return G.separate(list,bounds(),held,undefined,crowded);}
   function setTool(t){if(gesture)finish(false);tool=t;qa('[data-tool]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===t)));q('.clay-color').hidden=t!=='paint';say(tips[t]);refresh();draw();}
-  function active(){return !phone&&root.clientWidth>767&&!live&&!original&&!dialog.open;}
+  function active(){return !phone&&root.clientWidth>767&&!live&&!original&&!dialog.open&&!linkDialog.open;}
   function selectedBy(e){return e.target.closest&&R.unit(e.target.closest('[data-sculpt-item]'));}
   function start(e,resize=false){if(!active()||e.button!==0||e.target.isContentEditable)return;let el=resize?selected:selectedBy(e);const p=point(e);lastPoint=p;const peel=(tool==='peel'||e.altKey)&&!resize;if(peel){const hit=e.target.closest('[data-sculpt-item]');if(!hit||!R.isGroup(hit.parentElement)){say('Start on a piece inside a group.');return;}el=hit;if(getComputedStyle(R.unit(el)).getPropertyValue('--clay-pin').trim()==='1'){say('Unpin this group before peeling a piece out.');return;}}
     if(tool==='pin'&&!resize){if(!el){say('Click a piece to pin it.');return;}const before=B.begin(),pin=getComputedStyle(el).getPropertyValue('--clay-pin').trim()!=='1';B.write([{el,css:{'--clay-pin':pin?'1':'0'}}],pin?'Pinned this piece.':'Unpinned this piece.');B.commit(before,pin?'Pinned a piece.':'Unpinned a piece.');select(el);say(pin?'Pinned. Brushes and neighbors will leave this piece in place.':'Unpinned. This piece can move again.');return;}
@@ -154,6 +157,38 @@
   }
   // Big photos are scaled down first, the same way Replace image does, so the page still fits in browser storage.
   function readImage(file){if(!imageOk(file))return;B.shrink(file,url=>add('image',url,file.name),()=>say('That image could not be read. Try another file.'));}
+  // ---- Links: a button or link goes to another of your pages, a part of this page, or a web address ----
+  // A piece with several links (a navigation bar) uses the one last clicked inside it.
+  function linksIn(el){return !el||!el.isConnected?[]:el.tagName==='A'?[el]:[...el.querySelectorAll('a')];}
+  function linkOf(el){const all=linksIn(el);return all.length===1?all[0]:all.includes(pointed)?pointed:null;}
+  const words=(el,n)=>(el.innerText||el.textContent||'').trim().replace(/\s+/g,' ').slice(0,n);
+  function pieceName(el){return el.tagName==='IMG'?el.alt||'A picture':words(el.querySelector('h1,h2,h3')||el,48)||el.id;}
+  const linkName=a=>words(a.querySelector('h1,h2,h3')||a,40)||'this link';
+  // Typed the way people say addresses: a bare name or a home network address gets http, anything else https.
+  function webAddress(v){v=v.trim();if(/^(https?:\/\/|mailto:|tel:)\S+$/i.test(v))return v;if(/^[^\s@/:]+@[^\s@/]+\.[^\s@/]+$/.test(v))return 'mailto:'+v;
+    const m=/^([a-z0-9-]+(\.[a-z0-9-]+)*)(:\d{1,5})?([/?#]\S*)?$/i.exec(v);if(!m)return null;
+    return (/^\d{1,3}(\.\d{1,3}){3}$/.test(m[1])||!m[2]||/\.(lan|local|home|internal|localhost)$/i.test(m[1])?'http://':'https://')+v;}
+  function choice(label,href,where,on){const l=document.createElement('label'),r=document.createElement('input'),s=document.createElement('span');r.type='radio';r.name='to';r.value=href;r.dataset.where=where;r.checked=on;s.textContent=label;l.append(r,s);return l;}
+  async function openLink(){const a=linkOf(selected);q('.clay-more').hidden=true;q('[data-action=add]').setAttribute('aria-expanded','false');
+    if(!a){const n=linksIn(selected).length;say(n?'This piece has '+n+' links. Click the one you want, then choose Link to….':'Grab a button, or a piece with a link in it, first.');return;}
+    const now=a.getAttribute('href')||'',list=q('.clay-link-list'),web=q('.clay-link-web'),groups=[];
+    if(B.where==='server'){let pages=[];try{const r=await fetch('/api/pages');if(r.ok)pages=await r.json();}catch(err){}const me=(/^\/p\/([^/]+)\//.exec(location.pathname)||[])[1];
+      groups.push(['Your pages',pages.filter(p=>p.name!==me).map(p=>[p.title,'../'+p.name+'/','the page “'+p.title+'”'])]);}
+    groups.push(['On this page',[['The top','#'+field.id,'the top of this page']].concat(items().filter(el=>el.id&&!el.contains(a)).map(el=>[pieceName(el),'#'+el.id,'“'+pieceName(el)+'” on this page']))]);
+    list.replaceChildren();let found=false;
+    groups.forEach(([title,opts])=>{const fs=document.createElement('fieldset'),lg=document.createElement('legend');lg.textContent=title;fs.appendChild(lg);
+      if(!opts.length){const p=document.createElement('p');p.textContent='No other pages yet. Make one from ← Pages, then link to it here.';fs.appendChild(p);}
+      opts.forEach(([label,href,where])=>{const on=!found&&href===now;found=found||on;fs.appendChild(choice(label,href,where,on));});list.appendChild(fs);});
+    const webOn=!found&&!!now&&now[0]!=='#';q('input[name=to][value=web]').checked=webOn;web.value=webOn?now:'';q('.clay-link-error').textContent='';
+    q('#clay-link-title').textContent='Where should “'+linkName(a)+'” go?';linking={a,now};linkDialog.returnValue='';linkDialog.showModal();
+    const on=linkDialog.querySelector('input[name=to]:checked');if(on&&on.value==='web')web.focus();else if(on)on.focus();}
+  ['focus','click','input'].forEach(t=>q('.clay-link-web').addEventListener(t,()=>{q('input[name=to][value=web]').checked=true;}));
+  q('.clay-link form').addEventListener('submit',e=>{if(!e.submitter||e.submitter.value!=='ok'||!linking)return;const r=linkDialog.querySelector('input[name=to]:checked'),err=q('.clay-link-error');
+    if(!r){e.preventDefault();err.textContent='Choose where it goes.';return;}
+    let href=r.value,where=r.dataset.where;if(href==='web'){href=webAddress(q('.clay-link-web').value);where=href;if(!href){e.preventDefault();err.textContent='Type a web address, like https://example.com or 192.168.1.20:8096.';q('.clay-link-web').focus();return;}}
+    linking.href=href;linking.where=where;});
+  linkDialog.addEventListener('close',()=>{const l=linking;linking=null;if(linkDialog.returnValue!=='ok'||!l||!l.href)return;
+    if(l.href===l.now){say('It already goes there.');return;}B.link(l.a,l.href,l.where);select(R.unit(l.a.closest('[data-sculpt-item]')));say('Linked. “'+linkName(l.a)+'” now goes to '+l.where+'. Try it in View site.');});
   function showFormat(f){format=f;qa('[data-format]').forEach(b=>{b.setAttribute('aria-selected',String(b.dataset.format===f));b.setAttribute('aria-pressed',String(b.dataset.format===f));});q('.clay-dialog textarea').value=f==='html'?exportHTML:f==='css'?B.css():B.agent()+'\n\n# Sticky relationships\n'+R.describe().map(g=>g.id+' ('+g.bond+'): keep '+g.members.join(', ')+' together in this order on small screens.').join('\n');}
   function openExport(){if(gesture)finish(true);B.stopMotion();exportHTML=B.html();showFormat('html');q('.clay-export-state').replaceChildren();dialog.showModal();draw();}
   async function saveExport(){if(exportSaving)return;exportSaving=true;const state=q('.clay-export-state');state.textContent='Saving your standalone page…';q('[data-action=download]').disabled=true;
@@ -171,7 +206,7 @@
     if(name==='room'){makeRoom=!makeRoom;q('[data-action=room]').setAttribute('aria-pressed',String(makeRoom));say(makeRoom?'Neighbors will make room. Pinned pieces stay put.':'Overlap is allowed. Place pieces exactly where you want.');}
     if(name==='add'){const menu=q('.clay-more');menu.hidden=!menu.hidden;q('[data-action=add]').setAttribute('aria-expanded',String(!menu.hidden));}
     if(name==='space'){const before=B.begin();B.write([{el:field,css:{height:(field.clientHeight+300)+'px'}}],'You added more room to the canvas.');B.commit(before,'Added more canvas.');q('.clay-more').hidden=true;say('Another 300 pixels of room. Your exported page includes it.');refresh();}
-    if(name==='edit')textEditor(selected);
+    if(name==='edit')textEditor(selected);if(name==='link')await openLink();
     if(name==='split'){const img=imageOf(selected);q('.clay-more').hidden=true;q('[data-action=add]').setAttribute('aria-expanded','false');if(!isSvg(img)){say('Grab a drawing first: an SVG picture.');return;}await splitDrawing(img);}
     if(name==='replace'){const img=imageOf(selected);if(!img){say('Grab a picture first, then choose Replace image.');return;}fileFor=img;q('.clay-file').click();}
     if(name==='pages'){say('Saving…');B.flush(()=>{location.href=B.pages;});}
@@ -183,22 +218,27 @@
   }
   qa('[data-tool]').forEach(b=>b.onclick=()=>setTool(b.dataset.tool));qa('[data-action]').forEach(b=>b.onclick=()=>action(b.dataset.action));qa('[data-add]').forEach(b=>b.onclick=()=>b.dataset.add==='image'?(fileFor=null,q('.clay-file').click()):add(b.dataset.add));qa('[data-format]').forEach(b=>b.onclick=()=>showFormat(b.dataset.format));
   q('input[type=range]').oninput=e=>{radius=+e.target.value;q('output').textContent=radius;draw();};q('.clay-file').onchange=e=>{const f=e.target.files[0],img=fileFor;fileFor=null;e.target.value='';if(img&&img.isConnected)replaceImage(img,f);else readImage(f);};
-  field.addEventListener('pointerdown',e=>start(e));handle.addEventListener('pointerdown',e=>start(e,true));window.addEventListener('pointermove',e=>{if(active())move(e);});window.addEventListener('pointerup',e=>{if(gesture&&e.pointerId===gesture.id)finish(true);});window.addEventListener('pointercancel',()=>finish(false));window.addEventListener('blur',()=>{if(gesture)finish(false);});
+  field.addEventListener('pointerdown',e=>{pointed=e.target.closest&&e.target.closest('a');start(e);});handle.addEventListener('pointerdown',e=>start(e,true));window.addEventListener('pointermove',e=>{if(active())move(e);});window.addEventListener('pointerup',e=>{if(gesture&&e.pointerId===gesture.id)finish(true);});window.addEventListener('pointercancel',()=>finish(false));window.addEventListener('blur',()=>{if(gesture)finish(false);});
   field.addEventListener('dblclick',e=>{if(active()&&tool==='hand'){const hit=document.elementFromPoint(e.clientX,e.clientY),piece=hit&&hit.closest('[data-sculpt-item]');if(piece&&field.contains(piece)){e.preventDefault();let t=hit.closest('h1,h2,h3,p,a,button');textEditor(t&&piece.contains(t)?t:piece);}}});
-  field.addEventListener('click',e=>{if(active()){e.preventDefault();e.stopPropagation();}});field.addEventListener('dragover',e=>{if(active()){e.preventDefault();e.dataTransfer.dropEffect='copy';}});field.addEventListener('drop',e=>{if(active()){e.preventDefault();lastPoint=point(e);const img=e.target.closest&&e.target.closest('img');if(img&&field.contains(img))replaceImage(img,e.dataTransfer.files[0]);else readImage(e.dataTransfer.files[0]);}});
-  window.addEventListener('keydown',e=>{if(original||/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)||e.target.isContentEditable)return;if(dialog.open)return;
+  field.addEventListener('click',e=>{if(active()){e.preventDefault();e.stopPropagation();}});
+  // In View site, a link to another of your pages saves this one first, and the next page opens in View site too.
+  field.addEventListener('click',e=>{const a=live&&e.target.closest&&e.target.closest('a[href^="../"]');if(!a||e.defaultPrevented||e.button||e.ctrlKey||e.metaKey||e.shiftKey)return;e.preventDefault();
+    try{sessionStorage.setItem('clay-view-site','1');}catch(err){}let gone=false;const go=()=>{if(!gone){gone=true;location.href=a.href;}};B.flush(go);setTimeout(go,1500);});field.addEventListener('dragover',e=>{if(active()){e.preventDefault();e.dataTransfer.dropEffect='copy';}});field.addEventListener('drop',e=>{if(active()){e.preventDefault();lastPoint=point(e);const img=e.target.closest&&e.target.closest('img');if(img&&field.contains(img))replaceImage(img,e.dataTransfer.files[0]);else readImage(e.dataTransfer.files[0]);}});
+  window.addEventListener('keydown',e=>{if(original||/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)||e.target.isContentEditable)return;if(dialog.open||linkDialog.open)return;
     if(e.key==='Escape'){if(gesture){e.preventDefault();finish(false);}else{select(null);q('.clay-more').hidden=true;}return;}
     if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();action(e.shiftKey?'redo':'undo');return;}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();action('redo');return;}
     if(!active()||e.ctrlKey||e.metaKey||e.altKey)return;if(e.key==='Delete'&&selected){e.preventDefault();B.remove(selected);select(null);say('Removed. Undo brings it back.');return;}
     if(selected&&/^Arrow/.test(e.key)){e.preventDefault();const before=B.begin(),all=model(),start=all.map(o=>({...o})),i=all.find(i=>i.el===selected);if(i.pin){say('Unpin this piece before moving it.');return;}const n=e.shiftKey?10:2;i.x+=(e.key==='ArrowRight'?n:e.key==='ArrowLeft'?-n:0);i.y+=(e.key==='ArrowDown'?n:e.key==='ArrowUp'?-n:0);G.contain(i,bounds());const moved=settle(all,i.id,G.crowded(start)).items;apply(moved,'You nudged a piece with the keyboard.',false,start);B.commit(before,'Nudged a piece.');refresh();return;}
+    if(e.key.toLowerCase()==='k'&&selected){e.preventDefault();action('link');return;}
     const keys={b:'group',g:'hand',u:'push',s:'smooth',f:'flow',p:'paint',n:'pin',r:'grow'};if(keys[e.key.toLowerCase()])setTool(keys[e.key.toLowerCase()]);});
   window.addEventListener('resize',()=>{refresh();draw();});window.addEventListener('scroll',()=>{refresh();draw();},{passive:true});
   // On a Clay server, work is saved there and the page list is one click away; otherwise it stays in this browser.
   const SAVED={saving:'Saving to the server…',saved:'Saved on the server. Open this page from any computer on your network.',offline:'Can’t reach the server. Your changes are safe in this tab; it keeps trying.',stale:'This page was changed somewhere else. Reload to see the latest; changes made here since then were not saved.'};
-  if(B.where==='server'){q('.clay-pages').hidden=false;q('.clay-status').textContent='Your work is saved on the server as you go.';}
+  if(B.where==='server'){q('.clay-pages').hidden=false;q('.clay-site-note').hidden=false;q('.clay-status').textContent='Your work is saved on the server as you go.';}
   window.addEventListener('clay-save',e=>{const d=e.detail,server=d.where==='server';
     q('.clay-status').textContent=server?SAVED[d.state]:d.ok?'Saved in this browser. Export a page to keep a portable copy.':'Browser storage is full or unavailable. Export now to keep these changes.';
     if(server&&(d.state==='offline'||d.state==='stale'))say(SAVED[d.state]);else if(!server&&!d.ok)say('Could not autosave. Use Export to keep your page before closing.');});
   window.addEventListener('error',()=>{if(!seenError){seenError=true;say('Something interrupted the editor. Your last saved work stays here; reload to recover.');}});
   document.documentElement.setAttribute('data-sculpting','');setTool('hand');refresh();
+  try{if(sessionStorage.getItem('clay-view-site')){sessionStorage.removeItem('clay-view-site');action('preview');}}catch(err){}
 })();

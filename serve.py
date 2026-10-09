@@ -8,7 +8,8 @@ Local-only by default. To reach it from other computers on your network, set CLA
   CLAY_PASSWORD             ask for this password (any user name); CLAY_PASSWORD_FILE reads it from a file
 
 The data folder holds pages/<name>/ (the page, its saved work and its title), trash/ (deleted pages, until you
-empty it yourself) and exports/ (standalone pages saved from the editor).
+empty it yourself), exports/ (standalone pages saved from the editor, and whole sites: a folder and a .zip each)
+and site.json (which page is the home page).
 """
 from datetime import datetime, timezone
 from html import escape
@@ -29,13 +30,15 @@ import signal
 import socket
 import threading
 import unicodedata
+import zipfile
 
 ROOT = Path(__file__).resolve().parent
 NAME = re.compile(r'^[a-z0-9][a-z0-9-]{0,47}$')
 BINNED = re.compile(r'^([a-z0-9][a-z0-9-]{0,47})--(\d{14})$')
 RUNTIME = {'studio.js', 'sculpt-core.js', 'relations.js', 'sculpt.js', 'sculpt-ui.css'}
-STARTERS = {'blank': ROOT / 'starters' / 'blank.html', 'sample': ROOT / 'index.html'}
+STARTERS = {'blank': ROOT / 'starters' / 'blank.html', 'links': ROOT / 'starters' / 'links.html', 'sample': ROOT / 'index.html'}
 TITLE = re.compile(r'<title>.*?</title>', re.I | re.S)
+PAGE_LINK = re.compile(r'href="([a-z0-9][a-z0-9-]{0,47})\.html(?:#[^"]*)?"')
 LOCK = threading.Lock()
 
 
@@ -89,7 +92,8 @@ def name_for(title, taken):
     base = unicodedata.normalize('NFKD', title).encode('ascii', 'ignore').decode().lower()
     base = re.sub(r'[^a-z0-9]+', '-', base).strip('-')[:40].strip('-') or 'page'
     name, n = base, 2
-    while name in taken:
+    # index is kept for the home page of an exported site
+    while name in taken or name == 'index':
         name, n = f'{base}-{n}', n + 1
     return name
 
@@ -131,7 +135,9 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.send_header('Referrer-Policy', 'no-referrer')
         if urlsplit(self.path).path.startswith('/exports/'):
-            if parse_qs(urlsplit(self.path).query).get('download') == ['1']:
+            if urlsplit(self.path).path.endswith('.zip'):
+                self.send_header('Content-Disposition', 'attachment; filename="clay-site.zip"')
+            elif parse_qs(urlsplit(self.path).query).get('download') == ['1']:
                 self.send_header('Content-Disposition', 'attachment; filename="clay-page.html"')
         super().end_headers()
 
@@ -220,12 +226,12 @@ class Handler(SimpleHTTPRequestHandler):
         return folder if (folder / 'page.html').is_file() else None
 
     def listing(self):
-        out = []
+        out, home = [], read_json(self.data / 'site.json', {}).get('home')
         if self.pages.is_dir():
             for folder in self.pages.iterdir():
                 meta = read_json(folder / 'meta.json')
                 if NAME.match(folder.name) and meta and (folder / 'page.html').is_file():
-                    out.append({'name': folder.name, 'title': meta.get('title', folder.name), 'created': meta.get('created'), 'updated': meta.get('updated'), 'url': f'/p/{folder.name}/'})
+                    out.append({'name': folder.name, 'title': meta.get('title', folder.name), 'created': meta.get('created'), 'updated': meta.get('updated'), 'url': f'/p/{folder.name}/', 'home': folder.name == home})
         return sorted(out, key=lambda p: p['updated'] or '', reverse=True)
 
     # A page opens with its saved work inside it, so the editor restores it at once, the same way it does from the browser.
@@ -273,6 +279,8 @@ class Handler(SimpleHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == '/api/export':
             return self.export()
+        if path == '/api/site':
+            return self.export_site()
         if path == '/api/pages':
             return self.create()
         m = re.match(r'^/api/trash/([^/]+)/restore$', path)
@@ -364,7 +372,7 @@ class Handler(SimpleHTTPRequestHandler):
                 title = clean_title(value.get('title', ''))
                 html, state = STARTERS[start].read_text(encoding='utf-8'), None
             else:
-                return self.send_error(400, 'Start from blank, sample or copy:<page>')
+                return self.send_error(400, 'Start from blank, links, sample or copy:<page>')
             name = name_for(title, taken)
             folder = self.pages / name
             folder.mkdir(parents=True)
@@ -402,6 +410,46 @@ class Handler(SimpleHTTPRequestHandler):
         except OSError:
             return self.send_error(500, 'Could not write the exported page')
         self.send_json(201, {'url': '/exports/' + name})
+
+    # A whole site: each page as <name>.html (the editor has already pointed page links there) and the home page also as
+    # index.html, the page a web host shows first. It is kept as a folder you can open here and as a .zip to take away.
+    def export_site(self):
+        value = self.body(128 * 1024 * 1024)
+        if value is None:
+            return
+        pages, home = value.get('pages'), value.get('home')
+        if not isinstance(pages, list) or not pages or not all(isinstance(p, dict) and isinstance(p.get('name'), str) and self.page_dir(p['name'])
+                                                               and isinstance(p.get('html'), str) and p['html'].lower().startswith('<!doctype html>') for p in pages):
+            return self.send_error(400, 'Every page needs its name and a standalone HTML document')
+        names = [p['name'] for p in pages]
+        if len(set(names)) != len(names) or home not in names:
+            return self.send_error(400, 'Each page once, and the home page among them')
+        if 'index' in names and home != 'index':
+            return self.send_error(409, 'A page called index would be replaced by the home page; make index the home page')
+        files = {p['name'] + '.html': p['html'].encode('utf-8') for p in pages}
+        files['index.html'] = files[home + '.html']
+        titles = {p['name']: read_json(self.pages / p['name'] / 'meta.json', {}).get('title', p['name']) for p in pages}
+        broken = sorted({(titles[p['name']], target + '.html') for p in pages for target in PAGE_LINK.findall(p['html']) if target + '.html' not in files})
+        digest = hashlib.sha256()
+        for n in sorted(files):
+            digest.update(n.encode('utf-8') + b'\0' + files[n] + b'\0')
+        name = 'site-' + digest.hexdigest()[:16]
+        folder = self.data / 'exports'
+        try:
+            (folder / name).mkdir(parents=True, exist_ok=True)
+            for n, data in files.items():
+                (folder / name / n).write_bytes(data)
+            tmp = folder / f'{name}.zip.{threading.get_ident()}.tmp'
+            with zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED) as z:
+                for n in sorted(files):
+                    z.writestr(n, files[n])
+            os.replace(tmp, folder / (name + '.zip'))
+            with LOCK:
+                write(self.data / 'site.json', json.dumps({'home': home}))
+        except OSError:
+            return self.send_error(500, 'Could not write the exported site')
+        self.send_json(201, {'url': f'/exports/{name}/', 'zip': f'/exports/{name}.zip', 'pages': len(pages),
+                             'broken': [{'page': t, 'link': link} for t, link in broken]})
 
     def log_request(self, code='-', size='-'):
         if urlsplit(self.path).path != '/healthz':

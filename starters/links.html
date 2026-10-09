@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Our home server</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#e6e9e4;color:#20272b;font:16px/1.5 'Segoe UI',system-ui,sans-serif}main{max-width:1180px;margin:86px auto 130px;background:#f8f8f3;border-radius:8px;box-shadow:0 12px 65px #20272b12;overflow:hidden}.sculpt-field{position:relative;height:1000px;isolation:isolate}.piece{position:absolute;margin:0;overflow-wrap:anywhere}
+.site-nav{padding:24px 38px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #20272b17}.wordmark{font-size:21px;font-weight:800;letter-spacing:-.5px}.site-nav a{color:inherit;text-decoration:none}.site-nav .links{display:flex;gap:22px;font-size:14px}
+.eyebrow{font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#2f7a5c}.headline{font-size:clamp(38px,4.8vw,60px);font-weight:750;letter-spacing:-2px;line-height:1.05}.intro{font-size:17px;line-height:1.65;color:#535d62}
+.app{display:block;padding:24px 26px;border:1px solid #20272b14;border-radius:22px;color:#20272b;text-decoration:none;box-shadow:0 9px 0 #20272b0b}.app h2{font-size:24px;line-height:1.1;letter-spacing:-.5px;margin:10px 0 8px}.app p{font-size:15px;line-height:1.5;margin:0}.app small{font-size:11px;letter-spacing:1.5px;font-weight:700;text-transform:uppercase;opacity:.75}
+.sun{background:#ffd66b}.leaf{background:#adddc5}.sky{background:#c5c6f4}.rose{background:#f6b8a2}.water{background:#b7e0f2}.lilac{background:#e9c7f0}
+.little{font-size:13px;color:#5f696e;border-left:2px solid #2f7a5c;padding-left:14px}
+.site-footer{padding:22px 38px;font-size:13px;color:#5f696e;border-top:1px solid #20272b12}button,a,input,textarea{font:inherit}a:focus-visible,button:focus-visible{outline:3px solid #2f7a5c;outline-offset:4px}
+@media(max-width:767px){main{margin:70px 12px 160px}.site-nav{padding:20px}.site-nav .links{gap:12px}.headline{letter-spacing:-1px}.site-footer{padding:22px}}
+</style>
+<link rel="stylesheet" href="sculpt-ui.css" data-clay-ui>
+</head><body>
+<main data-studio-root>
+<section id="top" class="sculpt-field" aria-label="Page canvas">
+<nav id="page-header" class="piece site-nav" data-sculpt-item data-kind="block" style="left:0;top:0;width:100%;background:#f8f8f3" aria-label="Page navigation"><a class="wordmark" href="#top">Home</a><div class="links"><a href="#movies">Apps</a><a href="#help">Need help?</a></div></nav>
+<p id="eyebrow" class="piece eyebrow" data-sculpt-item data-kind="text" style="left:6%;top:126px;width:40%">Our home server</p>
+<h1 id="headline" class="piece headline" data-sculpt-item data-kind="text" style="left:6%;top:162px;width:56%">Everything at home, one click away.</h1>
+<p id="intro" class="piece intro" data-sculpt-item data-kind="text" style="left:6%;top:316px;width:50%">Films, photos, files and the house itself. Each card opens one app. To set where a card goes, grab it and press K, or choose Add + then Link to….</p>
+<a id="movies" class="piece app sun" data-sculpt-item data-kind="card" href="#top" style="left:6%;top:440px;width:27%"><small>Jellyfin</small><h2>Films and shows</h2><p>Pick up where you left off, on any screen in the house.</p></a>
+<a id="photos" class="piece app leaf" data-sculpt-item data-kind="card" href="#top" style="left:36.5%;top:440px;width:27%"><small>Immich</small><h2>Photos</h2><p>Every family picture, backed up from your phone.</p></a>
+<a id="files" class="piece app sky" data-sculpt-item data-kind="card" href="#top" style="left:67%;top:440px;width:27%"><small>Nextcloud</small><h2>Files</h2><p>Documents and shared folders, like a cloud drive at home.</p></a>
+<a id="house" class="piece app rose" data-sculpt-item data-kind="card" href="#top" style="left:6%;top:650px;width:27%"><small>Home Assistant</small><h2>The house</h2><p>Lights, heating and the doorbell.</p></a>
+<a id="passwords" class="piece app water" data-sculpt-item data-kind="card" href="#top" style="left:36.5%;top:650px;width:27%"><small>Vaultwarden</small><h2>Passwords</h2><p>One safe place for the family's logins.</p></a>
+<a id="books" class="piece app lilac" data-sculpt-item data-kind="card" href="#top" style="left:67%;top:650px;width:27%"><small>Audiobookshelf</small><h2>Books</h2><p>Audiobooks and podcasts for the car and bedtime.</p></a>
+<p id="help" class="piece little" data-sculpt-item data-kind="text" style="left:67%;top:150px;width:27%">Something not working? Ask whoever runs the server, or try again in a few minutes.</p>
+<footer id="page-footer" class="piece site-footer" data-sculpt-item data-kind="block" style="left:0;top:930px;width:100%;background:#f8f8f3">Made with Clay Studio.</footer>
+</section>
+</main>
+<script src="studio.js" data-clay-runtime></script><script src="sculpt-core.js" data-clay-runtime></script><script src="relations.js" data-clay-runtime></script><script src="sculpt.js" data-clay-runtime></script>
+</body></html>

@@ -34,7 +34,9 @@ Pages, and their undo history, are saved on the server as you work, so every com
 
 ## Try it
 
-The server opens on **Your pages**. Choose **New page**, give it a name, and start from a simple page or the Clay sample. Each page card can be renamed, duplicated or deleted; a deleted page goes to the trash, with an Undo, and stays in `data/trash` until you remove it yourself. In the editor, **← Pages** goes back to the list.
+The server opens on **Your pages**. Choose **New page**, give it a name, and start from a simple page, **Home server links** (a card for each app you run at home, for the family to click), or the Clay sample. Each page card can be renamed, duplicated or deleted; a deleted page goes to the trash, with an Undo, and stays in `data/trash` until you remove it yourself. In the editor, **← Pages** goes back to the list.
+
+To link pages together, grab a button or card and press **K** (or **Add + → Link to…**), then choose one of your pages, a part of this page, or type a web address. In a piece with several links, such as the navigation bar, click the link you mean first. A bare name or a home network address like `192.168.1.20:8096` gets `http://`; anything else gets `https://`. In **View site**, links to your other pages take you there, still in View site.
 
 1. **Grab** a card or the header/footer. Pull the green corner to resize. Full-width regions can move vertically; narrow them to make room for sideways movement.
 2. Turn on **Magnets**, then drag the small caption near a card edge. Release when the attachment hint appears. The two pieces now move together. Hold **Shift** for free placement.
@@ -55,6 +57,8 @@ The navigation, story section, and footer can all be grabbed in Sculpt. Their in
 
 Pages made from **Your pages** save on the server as you work (see above). Pages opened any other way, such as `index.html` on its own, autosave in this browser for this address, with their Undo history, so Undo still works after you reopen the page (the most recent steps are kept as storage allows). The page itself always saves first: if browser storage runs short, older history makes way. Big photos are scaled down to 1600 pixels when added or replaced, so pages stay a sensible size. A different port or browser has a separate saved workspace. Use **Export → Save HTML file → Download HTML** for a portable copy. The server also keeps exported pages in `data/exports`.
 
+**Export site** on Your pages saves every page at once: each as `<name>.html`, with links between your pages pointing at those files, and the home page you choose also as `index.html`, the page a web host shows first. You get a folder to open in the browser and a `.zip` to upload to any web host or open from your computer; both stay in `data/exports`. If a page links to one that has since been deleted, the export says which.
+
 Exported pages contain real HTML and CSS and work without Python, the editor, or a network connection. Groups keep their members together in the phone reading order. `examples/grouped-page.html` is a browser-verified export.
 
 **For an agent** exports a text description of the changes and group membership alongside the HTML/CSS options. This is a handoff aid; it is not a live agent connection or an AI feature.
@@ -70,6 +74,7 @@ Exported pages contain real HTML and CSS and work without Python, the editor, or
 | Undo / Redo | Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y |
 | Nudge selected piece | Arrow keys; Shift for larger steps |
 | Delete selected piece | Delete; Undo restores it |
+| Link the selected button or card | K |
 | Cancel stroke / clear selection | Escape |
 | Free placement | Hold Shift while dragging |
 | Peel a group member | Peel button, or Alt-drag |
@@ -90,11 +95,11 @@ npm run test:server
 - `sculpt-core.js`: pure geometry and constraint functions.
 - `relations.js`: real DOM grouping, attachment, peeling, and group resizing.
 - `sculpt.js` / `sculpt-ui.css`: direct manipulation controls and feedback.
-- `pages.html`: the page list; `starters/`: what a new page starts from; `index.html`: sculptable example page (also the Clay sample starter); `classic.html`: original layout editor example.
+- `pages.html`: the page list and Export site; `starters/`: what a new page starts from; `index.html`: sculptable example page (also the Clay sample starter); `classic.html`: original layout editor example.
 - `serve.py`: your pages, the editor, export and settings (network, password, data folder); `Dockerfile` and `compose.yaml` run it on a server.
 - `qa/`: geometry, relationship and server regression checks.
 
-See `VERIFICATION.txt` for tested behavior and current limits. This is a prototype. Pages are separate for now (links between them and exporting a whole site come next); mobile touch editing and arbitrary-site import are not provided.
+See `VERIFICATION.txt` for tested behavior and current limits. This is a prototype. Mobile touch editing and arbitrary-site import are not provided.
 
 ## Repository
 

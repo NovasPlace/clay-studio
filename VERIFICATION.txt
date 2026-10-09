@@ -292,3 +292,48 @@ Pages on the server, 2026-10-09 (Claude)
     storage 5/5, split 6/6, revision 9/9, motion 8/8, npm test 22/22.
   Not done yet: links between pages, a whole-site export, and the home
     server links starter (it needs a link editor first).
+
+Links between pages and Export site, 2026-10-09 (Claude)
+  sculpt.js: Link to… (K, or Add + → Link to…) on a button, a card that is a
+    link, or a piece with links in it (the one clicked inside it). It offers
+    your other pages (../<name>/), the parts of this page (#id), or a web
+    address: http(s), mailto and tel kept as typed, an email address gets
+    mailto:, a bare name or home network address (192.168.1.20:8096, nas,
+    *.lan/.local/.home/.internal) gets http://, anything else https://;
+    anything else is refused in place. Esc changes nothing. In View site, a
+    link to another page saves first and opens it in View site too.
+  studio.js: links are tracked like swapped pictures (linked: the original
+    address), so each change is one undo step, saved with the page and its
+    history, restored after reopening, and listed for an agent. Export points
+    ../<name>/ links at <name>.html (fragments kept).
+  serve.py: POST /api/site (the editor's own origin only) writes every page as
+    <name>.html and the chosen home page also as index.html, to
+    data/exports/site-<hash>/ and site-<hash>.zip (served as clay-site.zip),
+    and reports links to pages that aren't in the site. The home page is
+    remembered in data/site.json and marked in the list. No new page is named
+    index. A third starter, Home server links: a card per self-hosted app.
+  pages.html: Export site. Each page opens out of sight in the editor and is
+    written exactly as Export writes it; nothing is saved to the pages.
+  qa/server.test.py: 48/48, adding 10 site checks (the links starter, no page
+    called index, the files and index.html, the .zip and its download name,
+    the folder opens on the home page, broken links reported and web addresses
+    left alone, home remembered, same site same name, refusals, other origins).
+  Headless Waterfox, real input (site): 18/18. Two pages; K on a button lists
+    the other page, this page's parts and a web address; linking saves; undo
+    and redo; the clicked link in a navigation bar through Add +; a nonsense
+    address refused in place and 192.168.1.20:8096 → http://; Esc; a card to
+    https://jellyfin.example.com and another to a page; View site goes there
+    and back staying in View site; reopened with storage wiped, links and
+    their undo come back; single-page export points at about-us.html and the
+    agent text lists the links; Export site: 2 pages, folder and .zip, page
+    revisions unchanged; the list marks the home page; the exported site
+    opens on index.html and its links go between its files, no scripts; no
+    errors. (Headless Firefox fires no focus events in a background window,
+    so typing in the address field also selects its option on click/input.)
+  Docker (WSL), over the network: 5/5 (both starters; the site written into
+    the volume; the .zip downloads; still served after down and up with the
+    home page remembered; tidied to the trash).
+  Regression: pages 11/11, Sculpt 30/30, groups 8/8, Layout tools and classic
+    13/13, storage 5/5, split 6/6, revision 9/9, motion 8/8, npm test 22/22.
+  Not done: links in the classic editor (it has no pages); choosing which
+    pages go into a site (all of them do).

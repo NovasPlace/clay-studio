@@ -2,6 +2,7 @@
 who may save pages, and where saved pages go. Python standard library only: python qa/server.test.py"""
 import base64
 import http.client
+import io
 import json
 import os
 import shutil
@@ -10,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -206,12 +208,48 @@ check('36 Starting from something unknown is refused', call('POST', '/api/pages'
 check('37 Only the runtime is served beside a page', s.req('GET', '/p/family-links-2/serve.py')[0] == 404 and s.req('GET', '/p/family-links-2/../serve.py')[0] == 404)
 s.stop()
 
+# A whole site
+s = Server()
+st, made = call('POST', '/api/pages', {'title': 'Our home server', 'from': 'links'})
+page = saved(made.get('name', 'x'))[1]
+check('38 Home server links starts with a card for each app', st == 201 and page.count('class="piece app ') == 6 and '<title>Our home server</title>' in page, made)
+call('POST', '/api/pages', {'title': 'About us', 'from': 'blank'})
+check('39 No page is called index: that name is kept for the home page of an exported site', call('POST', '/api/pages', {'title': 'Index', 'from': 'blank'})[1].get('name') == 'index-2')
+HOME = '<!doctype html><html><head><title>Home</title></head><body><a href="about-us.html">About</a><a href="about-us.html#team">Team</a><a href="https://example.com/x.html">Out</a></body></html>'
+ABOUT = '<!doctype html><html><head><title>About</title></head><body><a href="our-home-server.html">Home</a><a href="gone.html">Old</a></body></html>'
+LAST = '<!doctype html><html><head><title>I</title></head><body></body></html>'
+site = [{'name': 'our-home-server', 'html': HOME}, {'name': 'about-us', 'html': ABOUT}, {'name': 'index-2', 'html': LAST}]
+st, r = call('POST', '/api/site', {'home': 'our-home-server', 'pages': site})
+out = Path(s.data) / r.get('url', '/x').strip('/') if st == 201 else Path(s.data)
+check('40 Export site writes each page as name.html, and the home page as index.html too', st == 201 and r['pages'] == 3 and (out / 'index.html').read_text(encoding='utf-8') == HOME
+      and (out / 'our-home-server.html').read_text(encoding='utf-8') == HOME and (out / 'about-us.html').read_text(encoding='utf-8') == ABOUT
+      and sorted(p.name for p in out.iterdir()) == ['about-us.html', 'index-2.html', 'index.html', 'our-home-server.html'], r)
+st, hd, body = s.req('GET', r.get('zip', '/x'))
+z =zipfile.ZipFile(io.BytesIO(body)) if st == 200 else None
+check('41 The .zip downloads as clay-site.zip and holds the same files', st == 200 and 'clay-site.zip' in hd.get('content-disposition', '')
+      and sorted(z.namelist()) == ['about-us.html', 'index-2.html', 'index.html', 'our-home-server.html'] and z.read('index.html').decode() == HOME, (st, hd))
+st, _, body = s.req('GET', r.get('url', '/x'))
+check('42 The site folder opens on its home page', st == 200 and body.decode() == HOME, st)
+check('43 A link to a page that is not in the site is reported; web addresses are left alone', r.get('broken') == [{'page': 'About us', 'link': 'gone.html'}], r.get('broken'))
+lst = call('GET', '/api/pages')[1]
+check('44 The home page is remembered and marked in the list', [p['name'] for p in lst if p['home']] == ['our-home-server'], lst)
+check('45 The same site exported again gets the same name', call('POST', '/api/site', {'home': 'our-home-server', 'pages': site})[1].get('url') == r['url'])
+refused = [call('POST', '/api/site', v)[0] for v in (
+    {'home': 'our-home-server', 'pages': site + [{'name': 'no-such-page', 'html': LAST}]},
+    {'home': 'nobody', 'pages': site},
+    {'home': 'about-us', 'pages': [{'name': 'about-us', 'html': '<p>not a document</p>'}]},
+    {'home': 'about-us', 'pages': [site[1], site[1]]},
+    {'home': 'about-us', 'pages': []})]
+check('46 Unknown pages, a home page outside the site, fragments and doubles are refused', refused == [400] * 5, refused)
+check('47 Only Clay itself may export a site', call('POST', '/api/site', {'home': 'about-us', 'pages': [site[1]]}, origin='http://evil.example')[0] == 403)
+s.stop()
+
 # The data folder inside the app folder: its files are never served directly
 inside = ROOT / 'data-test-server'
 s = Server(['--data', str(inside)])
 call('POST', '/api/pages', {'title': 'Secret', 'from': 'blank'})
 call('PUT', '/api/pages/secret/state', {'rev': 0, 'page': 'hidden'})
-check('38 Page files are never served as files, even with the data folder inside the app', s.req('GET', '/data-test-server/pages/secret/state.json')[0] == 404
+check('48 Page files are never served as files, even with the data folder inside the app', s.req('GET', '/data-test-server/pages/secret/state.json')[0] == 404
       and s.req('GET', '/data-test-server/pages/secret/page.html')[0] == 404)
 s.stop()
 shutil.rmtree(inside)

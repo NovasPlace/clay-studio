@@ -26,11 +26,14 @@ label.field{display:block;margin-bottom:14px;color:var(--muted);font-size:13px}l
 .row{display:flex;flex-direction:row-reverse;justify-content:flex-start;gap:8px}
 .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);display:flex;align-items:center;gap:12px;padding:10px 12px 10px 16px;border-radius:14px;background:#24323c;border:1px solid var(--line);box-shadow:0 12px 40px #0007;max-width:calc(100vw - 32px)}
 .toast[hidden]{display:none}
+.head-acts{display:flex;gap:8px}.meta b{color:var(--mint);font-weight:600}
+label.field select{display:block;width:100%;margin-top:6px;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:#0f161b;color:var(--ink);font:inherit}
+.say{color:var(--muted);margin:0 0 16px}.say.small{font-size:13px;margin-top:-6px}.progress{min-height:22px;margin:0 0 16px}.progress:empty{display:none}.progress a{color:var(--mint);margin-right:16px;font-weight:600}.progress ul{margin:8px 0 0;padding-left:18px;color:var(--warn);font-size:13px}
 @media(max-width:560px){header{flex-wrap:wrap}.wrap{padding-top:18px}}
 </style>
 </head><body>
 <div class="wrap">
-  <header><div class="brand">Clay Studio<small>SHAPE IT BY HAND</small></div><button class="primary" data-new>New page</button></header>
+  <header><div class="brand">Clay Studio<small>SHAPE IT BY HAND</small></div><div class="head-acts"><button data-site hidden>Export site</button><button class="primary" data-new>New page</button></div></header>
   <h1>Your pages</h1>
   <p class="lede">Kept on this server, so any computer on your network sees the same work.</p>
   <div class="grid" id="pages" aria-live="polite"></div>
@@ -40,6 +43,7 @@ label.field{display:block;margin-bottom:14px;color:var(--muted);font-size:13px}l
   <label class="field">Name<input name="title" required maxlength="80" placeholder="Our home server" autocomplete="off"></label>
   <div class="starts" role="radiogroup" aria-label="Start from">
     <label class="start"><input type="radio" name="from" value="blank" checked><div><b>Simple start</b><span>A heading, a few words, a button, two cards and a picture, ready to arrange.</span></div></label>
+    <label class="start"><input type="radio" name="from" value="links"><div><b>Home server links</b><span>A card for each app you run at home, for the family to click. Point each card at its app.</span></div></label>
     <label class="start"><input type="radio" name="from" value="sample"><div><b>The Clay sample</b><span>The demo page Clay opens with, to play with.</span></div></label>
   </div>
   <div class="row"><button class="primary" value="ok">Create page</button><button value="cancel" formnovalidate>Cancel</button></div>
@@ -49,11 +53,19 @@ label.field{display:block;margin-bottom:14px;color:var(--muted);font-size:13px}l
   <label class="field">Name<input name="title" required maxlength="80" autocomplete="off"></label>
   <div class="row"><button class="primary" value="ok">Rename</button><button value="cancel" formnovalidate>Cancel</button></div>
 </form></dialog>
+<dialog id="site" aria-labelledby="site-title"><form method="dialog">
+  <h2 id="site-title">Export your site</h2>
+  <p class="say">Every page as a plain HTML file, with the links between them, ready for any web host or to open from a folder. Your pages here stay as they are.</p>
+  <label class="field">Home page<select name="home"></select></label>
+  <p class="say small">The home page is also saved as index.html, the page a web host shows first.</p>
+  <div class="progress" role="status" aria-live="polite"></div>
+  <div class="row"><button class="primary" value="ok">Export site</button><button value="cancel" formnovalidate>Close</button></div>
+</form></dialog>
 <div class="toast" role="status" hidden><span></span></div>
 <script>
 (function(){
   'use strict';
-  var list=document.getElementById('pages'),toast=document.querySelector('.toast'),toastTimer=0;
+  var list=document.getElementById('pages'),toast=document.querySelector('.toast'),toastTimer=0,known=[],building=false;
   var COVERS=['#ffd66b','#adddc5','#c5c6f4','#f6b8a2','#b7e0f2','#e9c7f0','#d8e7a4'];
   function cover(name){var h=0;for(var i=0;i<name.length;i++)h=(h*31+name.charCodeAt(i))>>>0;return COVERS[h%COVERS.length];}
   var rel=window.Intl&&Intl.RelativeTimeFormat?new Intl.RelativeTimeFormat(undefined,{numeric:'auto'}):null;
@@ -66,13 +78,14 @@ label.field{display:block;margin-bottom:14px;color:var(--muted);font-size:13px}l
     toast.hidden=false;toastTimer=setTimeout(function(){toast.hidden=true;},action?10000:4000);}
   function fail(e){say(e.message||'Something went wrong.');}
   function render(pages){
-    list.replaceChildren();
+    known=pages;document.querySelector('[data-site]').hidden=!pages.length;list.replaceChildren();
     if(!pages.length){var e=document.createElement('div');e.className='empty';e.style.gridColumn='1/-1';var p=document.createElement('p');p.textContent='No pages yet. Start one, then shape it by hand.';
       var b=document.createElement('button');b.className='primary';b.textContent='New page';b.addEventListener('click',create);e.append(p,b);list.appendChild(e);return;}
     pages.forEach(function(pg){
       var c=document.createElement('article');c.className='card';c.dataset.name=pg.name;
       var a=document.createElement('a');a.className='cover';a.href=pg.url;a.textContent=pg.title;a.style.background=cover(pg.name);a.setAttribute('aria-label','Open '+pg.title);
       var m=document.createElement('div');m.className='meta';m.textContent='Edited '+ago(pg.updated);
+      if(pg.home){var hb=document.createElement('b');hb.textContent='Home page';m.prepend(hb,' · ');}
       var acts=document.createElement('div');acts.className='acts';
       [['Rename',function(){rename(pg);}],['Duplicate',function(){duplicate(pg);}],['Delete',function(){remove(pg);},'del']].forEach(function(x){
         var b=document.createElement('button');b.textContent=x[0];if(x[2])b.className=x[2];b.addEventListener('click',x[1]);acts.appendChild(b);});
@@ -88,6 +101,30 @@ label.field{display:block;margin-bottom:14px;color:var(--muted);font-size:13px}l
   function duplicate(pg){api('POST','/api/pages',{from:'copy:'+pg.name}).then(function(r){say('Made “'+r.title+'”.');load();},fail);}
   function remove(pg){api('DELETE','/api/pages/'+pg.name).then(function(r){load();
     say('Moved “'+pg.title+'” to the trash.',{label:'Undo',run:function(){api('POST','/api/trash/'+r.trash+'/restore').then(function(){say('“'+pg.title+'” is back.');load();},fail);}});},fail);}
+  // Export site: each page opens out of sight in the editor, which writes it out exactly as Export does; the server
+  // puts them together. Nothing is saved to the pages while this happens.
+  var site=document.getElementById('site'),siteForm=site.querySelector('form'),progress=site.querySelector('.progress'),go=site.querySelector('.primary');
+  function exportSite(){var sel=site.querySelector('select'),home=known.filter(function(p){return p.home;})[0]||known.slice().sort(function(a,b){var x=a.created||'',y=b.created||'';return x<y?-1:x>y?1:0;})[0];
+    sel.replaceChildren();known.forEach(function(p){var o=document.createElement('option');o.value=p.name;o.textContent=p.title;o.selected=p===home;sel.appendChild(o);});
+    progress.replaceChildren();go.disabled=false;site.returnValue='';site.showModal();}
+  function written(pg){return new Promise(function(done,fail){var f=document.createElement('iframe'),t=0;f.setAttribute('aria-hidden','true');f.tabIndex=-1;
+    f.style.cssText='position:fixed;left:-20000px;top:0;width:1280px;height:900px;border:0;visibility:hidden';
+    var end=function(){clearTimeout(t);f.remove();};t=setTimeout(function(){end();fail(new Error('“'+pg.title+'” took too long to open.'));},30000);
+    f.onload=function(){try{var w=f.contentWindow;if(!w.ClayBridge)throw new Error('“'+pg.title+'” did not open in the editor.');var h=w.ClayBridge.html();end();done(h);}catch(e){end();fail(e);}};
+    f.src=pg.url;document.body.appendChild(f);});}
+  function build(){var pages=known.slice(),home=site.querySelector('select').value,docs=[];building=true;go.disabled=true;
+    var step=function(i){if(!site.open){building=false;return;}if(i===pages.length)return send();progress.textContent='Getting page '+(i+1)+' of '+pages.length+': '+pages[i].title+'…';
+      written(pages[i]).then(function(h){docs.push({name:pages[i].name,html:h});step(i+1);},stop);};
+    var send=function(){progress.textContent='Putting the site together…';api('POST','/api/site',{home:home,pages:docs}).then(function(r){building=false;go.disabled=false;
+      progress.replaceChildren(document.createTextNode('Saved '+r.pages+' page'+(r.pages===1?'':'s')+'. '));
+      var open=document.createElement('a');open.href=r.url;open.target='_blank';open.rel='noopener';open.textContent='Open the site';
+      var zip=document.createElement('a');zip.href=r.zip;zip.download='clay-site.zip';zip.textContent='Download .zip';progress.append(open,zip);
+      if(r.broken.length){var ul=document.createElement('ul');r.broken.forEach(function(b){var li=document.createElement('li');li.textContent='“'+b.page+'” links to '+b.link+', which isn’t one of your pages any more.';ul.appendChild(li);});progress.appendChild(ul);}
+      load();},stop);};
+    var stop=function(e){building=false;go.disabled=false;progress.textContent=e.message||'The site could not be exported.';};
+    step(0);}
+  siteForm.addEventListener('submit',function(e){if(e.submitter&&e.submitter.value==='ok'){e.preventDefault();if(!building)build();}});
+  document.querySelector('[data-site]').addEventListener('click',exportSite);
   document.querySelector('[data-new]').addEventListener('click',create);
   load();
 })();
