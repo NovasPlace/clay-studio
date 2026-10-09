@@ -61,7 +61,20 @@ Pages made from **Your pages** save on the server as you work (see above). Pages
 
 Exported pages contain real HTML and CSS and work without Python, the editor, or a network connection. Groups keep their members together in the phone reading order. `examples/grouped-page.html` is a browser-verified export.
 
-**For an agent** exports a text description of the changes and group membership alongside the HTML/CSS options. This is a handoff aid; it is not a live agent connection or an AI feature.
+**For an agent** exports a text description of the changes and group membership alongside the HTML/CSS options, for an agent to apply to a site's own source files. To work on a page together, live, see below.
+
+## Build with an agent
+
+An agent such as Claude Code or Codex can read a page and change it while you work on it. Its changes appear in your editor as they happen, labelled with its name and what it says it did (“Claude: made the cards three across”), the pieces it touched light up briefly, and Undo takes each change back like one of your own. Clay itself has no AI in it and needs no account: the agent is whatever you already use.
+
+In the editor, choose **Agent**. It shows what to set up, with this server's address and its key filled in:
+
+- **Claude Code:** one command, `claude mcp add --transport http clay http://<server>:8920/mcp --header "Authorization: Bearer <key>"`.
+- **Codex** (or anything whose MCP setup runs a program): save `clay-mcp.py` from the dialog (it needs Python, nothing else), and add `[mcp_servers.clay]` to `~/.codex/config.toml` with `command = "python"`, `args = ["/path/to/clay-mcp.py"]` and `env = { CLAY_URL = "http://<server>:8920", CLAY_AGENT_KEY = "<key>" }`.
+
+Then ask, for example, “In Clay, line up the cards on my home page and link Photos to the About page”. The agent can list your pages, make new ones, and read and change a page **that is open in Clay**; if it isn't, it is told to ask you to open it. It works in Clay's own terms: place a piece (position and size in pixels), change words (a card's label, title and words are separate parts), link something to a page, a part of the page or a web address, add a piece (best copied from one already on the page, so it matches), remove, paint, pin, group and ungroup, and make the page taller. Everything in one request is one step, and either all of it happens or none of it does. If you are in the middle of dragging something, its change waits until you let go.
+
+The key lets an agent in without the password, so treat it like one. **Make a new key** in the Agent dialog shuts out anything using the old one. Scripts can use the same thing without MCP: `GET /api/agent/pages`, `POST /api/agent/pages` with `{"title", "from"}`, `GET /api/agent/pages/<name>` to read, and `POST /api/agent/pages/<name>` with `{"actions": [...], "say": "...", "as": "..."}` to change, each with `Authorization: Bearer <key>`.
 
 ## Keyboard controls
 
@@ -95,8 +108,9 @@ npm run test:server
 - `sculpt-core.js`: pure geometry and constraint functions.
 - `relations.js`: real DOM grouping, attachment, peeling, and group resizing.
 - `sculpt.js` / `sculpt-ui.css`: direct manipulation controls and feedback.
+- `agent.js`: building together: applies an agent's requests in the open editor, and the Agent dialog. `clay-mcp.py`: MCP for setups that run a program.
 - `pages.html`: the page list and Export site; `starters/`: what a new page starts from; `index.html`: sculptable example page (also the Clay sample starter); `classic.html`: original layout editor example.
-- `serve.py`: your pages, the editor, export and settings (network, password, data folder); `Dockerfile` and `compose.yaml` run it on a server.
+- `serve.py`: your pages, the editor, export, the agent channel and MCP, and settings (network, password, data folder); `Dockerfile` and `compose.yaml` run it on a server.
 - `qa/`: geometry, relationship and server regression checks.
 
 See `VERIFICATION.txt` for tested behavior and current limits. This is a prototype. Mobile touch editing and arbitrary-site import are not provided.

@@ -1765,7 +1765,13 @@
     stopMotion:function(){if(raf)cancelAnimationFrame(raf);raf=0;motions.forEach(function(m,e){e.style.translate=e.style.scale=e.style.transformOrigin='';});motions.clear();},
     original:function(enabled){if(enabled)show();else hide();host.style.display=enabled?'':'none';},
     css:function(){return cssText(changeList());},agent:function(){return agentText(changeList());},html:exportDocument,
-    text:function(el,value){var id=idOf(el);if(!edited[id]){edited[id]=true;originTexts[id]=el.textContent;}var before=snapshot();el.textContent=value;setRule(el,{'white-space':'pre-wrap'},'base');lastWhy='You edited '+nameOf(el)+'.';commit(before);},
+    text:function(el,value){ClayBridge.mark(el,'text');var before=snapshot();ClayBridge.textNow(el,value);lastWhy='You edited '+nameOf(el)+'.';commit(before);},
+    // For several changes in one step: mark what will change before begin(), then change it with the *Now calls.
+    mark:function(el,what){var id=idOf(el);if(what==='text'&&!edited[id]){edited[id]=true;originTexts[id]=el.textContent;}if(what==='link'&&!linked[id])linked[id]={orig:el.getAttribute('href')};},
+    textNow:function(el,value){el.textContent=value;setRule(el,{'white-space':'pre-wrap'},'base');},
+    linkNow:function(el,href){if(href==null)el.removeAttribute('href');else el.setAttribute('href',href);},
+    removeNow:function(el){made[idOf(el)]=el;el.remove();},
+    name:function(el){return nameOf(el);},
     retain:function(el){[el].concat(Array.prototype.slice.call(el.querySelectorAll('*'))).forEach(function(e){made[idOf(e)]=e;});},
     register:function(el,kind){var id=idOf(el);made[id]=el;inserted[id]={kind:kind};return id;},
     remove:function(el){var before=snapshot();made[idOf(el)]=el;el.remove();lastWhy='You removed '+nameOf(el)+'.';commit(before);render();},
@@ -1773,8 +1779,7 @@
     shrink:shrinkImage,
     where:shelf.where,pages:shelf.pages,flush:shelf.flush,
     picture:function(img,file,done){shrinkImage(file,function(url){swapPicture(img,url,file.name);if(done)done();});},
-    link:function(el,href,where){var id=idOf(el);if(!linked[id])linked[id]={orig:el.getAttribute('href')};var before=snapshot();
-      if(href==null)el.removeAttribute('href');else el.setAttribute('href',href);lastWhy='You pointed '+nameOf(el)+' to '+(where||href)+'.';commit(before);},
+    link:function(el,href,where){ClayBridge.mark(el,'link');var before=snapshot();ClayBridge.linkNow(el,href);lastWhy='You pointed '+nameOf(el)+' to '+(where||href)+'.';commit(before);},
     save:save
   };
 

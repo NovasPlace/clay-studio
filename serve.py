@@ -8,8 +8,11 @@ Local-only by default. To reach it from other computers on your network, set CLA
   CLAY_PASSWORD             ask for this password (any user name); CLAY_PASSWORD_FILE reads it from a file
 
 The data folder holds pages/<name>/ (the page, its saved work and its title), trash/ (deleted pages, until you
-empty it yourself), exports/ (standalone pages saved from the editor, and whole sites: a folder and a .zip each)
-and site.json (which page is the home page).
+empty it yourself), exports/ (standalone pages saved from the editor, and whole sites: a folder and a .zip each),
+site.json (which page is the home page) and agent.json (the key agents use).
+
+Agents (Claude Code, Codex, scripts) use /mcp (MCP over HTTP) or /api/agent/..., with the key as a bearer token. They
+can list and make pages; to read or change one, it has to be open in an editor, which takes their changes as they come.
 """
 from datetime import datetime, timezone
 from html import escape
@@ -25,17 +28,19 @@ import ipaddress
 import json
 import os
 import re
+import secrets
 import shutil
 import signal
 import socket
 import threading
+import time
 import unicodedata
 import zipfile
 
 ROOT = Path(__file__).resolve().parent
 NAME = re.compile(r'^[a-z0-9][a-z0-9-]{0,47}$')
 BINNED = re.compile(r'^([a-z0-9][a-z0-9-]{0,47})--(\d{14})$')
-RUNTIME = {'studio.js', 'sculpt-core.js', 'relations.js', 'sculpt.js', 'sculpt-ui.css'}
+RUNTIME = {'studio.js', 'sculpt-core.js', 'relations.js', 'sculpt.js', 'sculpt-ui.css', 'agent.js'}
 STARTERS = {'blank': ROOT / 'starters' / 'blank.html', 'links': ROOT / 'starters' / 'links.html', 'sample': ROOT / 'index.html'}
 TITLE = re.compile(r'<title>.*?</title>', re.I | re.S)
 PAGE_LINK = re.compile(r'href="([a-z0-9][a-z0-9-]{0,47})\.html(?:#[^"]*)?"')
@@ -103,6 +108,111 @@ def retitle(html, title):
     return TITLE.sub(lambda m: tag, html, count=1) if TITLE.search(html) else html.replace('</head>', tag + '</head>', 1)
 
 
+class Channels:
+    """Agents' requests for a page, waiting for an editor that has it open. An editor counts as open while it is waiting
+    for requests, and for a little while after (it is busy between requests), until it says it has gone: its tab
+    closed or was hidden."""
+    PRESENT, EDITOR_WAIT, AGENT_WAIT = 35, 25, 30
+
+    def __init__(self):
+        self.cond, self.pages = threading.Condition(), {}
+
+    def page(self, name):
+        return self.pages.setdefault(name, {'queue': [], 'out': set(), 'answers': {}, 'editors': {}})
+
+    def is_open(self, name):
+        with self.cond:
+            ch, t = self.pages.get(name), time.monotonic()
+            return bool(ch) and any(not e['gone'] and (e['waiting'] or t - e['seen'] < self.PRESENT) for e in ch['editors'].values())
+
+    def bye(self, name, editor):
+        with self.cond:
+            e = self.page(name)['editors'].get(editor)
+            if e:
+                e['gone'] = True
+                self.cond.notify_all()
+
+    # for an agent: hand the request over and wait for the editor's answer; None if no editor has the page open
+    def ask(self, name, request):
+        if not self.is_open(name):
+            return None
+        request = {**request, 'id': secrets.token_hex(8)}
+        with self.cond:
+            ch = self.page(name)
+            ch['queue'].append(request)
+            self.cond.notify_all()
+            if self.cond.wait_for(lambda: request['id'] in ch['answers'], self.AGENT_WAIT):
+                return ch['answers'].pop(request['id'])
+            if request in ch['queue']:
+                ch['queue'].remove(request)
+            ch['out'].discard(request['id'])
+            return False
+
+    # for an editor: the next request, waiting a while for one
+    def next(self, name, editor, wait):
+        with self.cond:
+            ch, t = self.page(name), time.monotonic()
+            for k in [k for k, e in ch['editors'].items() if not e['waiting'] and (e['gone'] or t - e['seen'] > 600)]:
+                del ch['editors'][k]
+            e = ch['editors'].setdefault(editor, {'waiting': 0, 'seen': t, 'gone': False})
+            e.update(gone=False, waiting=e['waiting'] + 1, seen=t)
+            try:
+                self.cond.wait_for(lambda: ch['queue'] or e['gone'], wait)
+                if e['gone'] or not ch['queue']:
+                    return None
+                request = ch['queue'].pop(0)
+                ch['out'].add(request['id'])
+                return request
+            finally:
+                e['waiting'] -= 1
+                e['seen'] = time.monotonic()
+
+    def answer(self, name, rid, value):
+        with self.cond:
+            ch = self.page(name)
+            if rid not in ch['out']:
+                return False
+            ch['out'].discard(rid)
+            ch['answers'][rid] = value
+            self.cond.notify_all()
+            return True
+
+
+CHANNELS = Channels()
+SESSIONS = {}
+ACTIONS = '''Each action is an object with "do", and pieces are named by the ids clay_read_page gives:
+- {"do":"place","piece":id,"x":px,"y":px,"width":px,"height":px,"size":px} moves or resizes a piece or group; give only what changes. size is the letter size of a text piece.
+- {"do":"text","piece":id,"part":n,"text":"..."} changes words. A piece with several parts (a card's label, title and words; a menu's links) needs "part".
+- {"do":"link","piece":id,"part":n,"to":"page:<name>" | "#<id>" | "https://..." | "192.168.1.20:8096"} points a button, card or link somewhere.
+- {"do":"add","kind":"text"|"card"|"button"|"image","like":id,"id":"new-id","x":px,"y":px,"width":px,"text":"...","parts":["..."],"to":"...","src":"https://...","alt":"..."} adds a piece. "like" copies the look of an existing piece (best for matching the page's style), and then kind can be left out.
+- {"do":"remove","piece":id}
+- {"do":"paint","piece":id,"fill":"#ffd66b","text":"#24323c"} colours a piece's background, its words, or both.
+- {"do":"pin","piece":id,"pinned":true|false} pinned pieces stay put when the person sculpts.
+- {"do":"group","pieces":[id,...]} sticks pieces together; they move as one and stay together on phones. {"do":"ungroup","piece":id}
+- {"do":"canvas","height":px} makes the page taller or shorter.
+All the actions in one call are one step in the person's history (one Undo), and either all happen or none do.'''
+MCP_TOOLS = [
+    {'name': 'clay_pages', 'description': 'List the pages in Clay Studio: name, title, whether it is open in an editor right now (a page has to be open to be read or changed), and which is the home page.',
+     'inputSchema': {'type': 'object', 'properties': {}}},
+    {'name': 'clay_new_page', 'description': 'Make a new page. It starts from "blank" (a heading, words, a button, two cards and a picture), "links" (a card per self-hosted app) or "sample" (the Clay demo page). Then ask the person to open it in Clay, so you can read and change it.',
+     'inputSchema': {'type': 'object', 'properties': {'title': {'type': 'string'}, 'start': {'type': 'string', 'enum': ['blank', 'links', 'sample']}}, 'required': ['title']}},
+    {'name': 'clay_read_page', 'description': 'Read a page that is open in Clay: every piece with its id, kind, position and size in pixels on the desktop canvas, its words (in parts, for cards and menus), links and colours. The person may be changing it too, so read it again before a new round of changes.',
+     'inputSchema': {'type': 'object', 'properties': {'page': {'type': 'string', 'description': 'The page name from clay_pages'}}, 'required': ['page']}},
+    {'name': 'clay_change_page', 'description': 'Change a page that is open in Clay. The person sees each change appear as you make it, labelled with your name and what you said, and can undo it. Returns the page as it is afterwards, and warns about pieces that overlap.\n' + ACTIONS,
+     'inputSchema': {'type': 'object', 'properties': {'page': {'type': 'string'}, 'say': {'type': 'string', 'description': 'A few words for the person, saying what you did, like "made the cards three across"'},
+                                                      'actions': {'type': 'array', 'items': {'type': 'object', 'properties': {'do': {'type': 'string', 'enum': ['place', 'text', 'link', 'add', 'remove', 'paint', 'pin', 'group', 'ungroup', 'canvas']}}, 'required': ['do']}}},
+                     'required': ['page', 'actions']}},
+]
+MCP_ABOUT = ('Clay Studio is a web page editor where a person shapes pages by hand. You can work on the same page with them: '
+             'list the pages, read one, and change it with small steps the person sees as they happen and can undo. '
+             'A page has to be open in Clay for you to read or change it; if it is not, ask the person to open it.')
+
+
+def agent_name(client):
+    name = str(client or '').strip()
+    return 'Claude' if 'claude' in name.lower() else 'Codex' if 'codex' in name.lower() else (name[:30] or 'An agent')
+
+
 class Handler(SimpleHTTPRequestHandler):
     port = 8920
     data = ROOT / 'data'
@@ -116,8 +226,8 @@ class Handler(SimpleHTTPRequestHandler):
     def pages(self):
         return self.data / 'pages'
 
-    # Exports are served from the data folder. Pages and the trash are never served as files: a page opens through
-    # /p/<name>/, and its saved work only travels with it.
+    # Exports are served from the data folder, and nothing else in it is served as a file: a page opens through
+    # /p/<name>/, its saved work only travels with it, and the agent key stays put.
     def translate_path(self, path):
         if urlsplit(path).path.startswith('/exports/'):
             app, self.directory = self.directory, str(self.data)
@@ -126,7 +236,7 @@ class Handler(SimpleHTTPRequestHandler):
             finally:
                 self.directory = app
         found = Path(super().translate_path(path)).resolve()
-        if found.is_relative_to(self.pages) or found.is_relative_to(self.data / 'trash'):
+        if found.is_relative_to(self.data):
             return str(ROOT / '.nothing-here')
         return str(found)
 
@@ -158,9 +268,34 @@ class Handler(SimpleHTTPRequestHandler):
             return False
         return hmac.compare_digest(given.encode('utf-8'), self.password.encode('utf-8'))
 
+    # Agents come in with the key from the editor's Agent dialog instead of the password; a browser can't send it.
+    def for_agents(self):
+        path = urlsplit(self.path).path
+        return path == '/mcp' or path.startswith('/api/agent/')
+
+    def agent_key(self, new=False):
+        with LOCK:
+            key = None if new else read_json(self.data / 'agent.json', {}).get('key')
+            if not key:
+                key = secrets.token_urlsafe(24)
+                write(self.data / 'agent.json', json.dumps({'key': key}))
+            return key
+
+    def agent_ok(self):
+        scheme, _, value = (self.headers.get('Authorization') or '').partition(' ')
+        return scheme.lower() == 'bearer' and hmac.compare_digest(value.strip().encode('utf-8'), self.agent_key().encode('utf-8'))
+
     def allowed(self):
         if not self.host_ok():
             self.send_error(421, 'This server answers to its own address only')
+            return False
+        if self.for_agents():
+            if self.agent_ok():
+                return True
+            self.send_response(401)
+            self.send_header('WWW-Authenticate', 'Bearer realm="Clay Studio"')
+            self.send_header('Content-Length', '0')
+            self.end_headers()
             return False
         if not self.authorized():
             self.send_response(401)
@@ -254,6 +389,21 @@ class Handler(SimpleHTTPRequestHandler):
             return self.redirect('/pages.html')
         if path == '/api/pages':
             return self.send_json(200, self.listing())
+        if path == '/api/agent-key':
+            return self.send_json(200, {'key': self.agent_key()})
+        m = re.match(r'^/api/pages/([^/]+)/agent$', path)
+        if m:
+            return self.inbox(m.group(1))
+        if path == '/api/agent/pages':
+            return self.send_json(200, self.agent_pages())
+        m = re.match(r'^/api/agent/pages/([^/]+)$', path)
+        if m:
+            return self.agent_reply(*self.agent_ask(m.group(1), {'read': True, 'as': self.headers.get('X-Clay-Agent-Name')}))
+        if path == '/mcp':
+            self.send_response(405)
+            self.send_header('Allow', 'POST')
+            self.send_header('Content-Length', '0')
+            return self.end_headers()
         m = re.match(r'^/p/([^/]+)(/(.*))?$', path)
         if m:
             folder = self.page_dir(m.group(1))
@@ -274,9 +424,40 @@ class Handler(SimpleHTTPRequestHandler):
             super().do_HEAD()
 
     def do_POST(self):
-        if not self.allowed() or not self.same_origin():
+        if not self.allowed():
             return
         path = urlsplit(self.path).path
+        if self.for_agents():
+            # a browser always says where it comes from; agents send nothing, and only pages of this server may send it
+            if self.headers.get('Origin') and not self.same_origin():
+                return
+            if path == '/mcp':
+                return self.mcp()
+            if path == '/api/agent/pages':
+                return self.create()
+            m = re.match(r'^/api/agent/pages/([^/]+)$', path)
+            if m:
+                value = self.body(8 * 1024 * 1024)
+                if value is None:
+                    return
+                return self.agent_reply(*self.agent_ask(m.group(1), {'actions': value.get('actions'), 'say': value.get('say'), 'as': value.get('as') or self.headers.get('X-Clay-Agent-Name')}))
+            return self.send_error(404)
+        # A closing tab says it has gone with a beacon, which comes with Origin "null" or none. At worst a stranger's would
+        # make an agent wait for the editor's next call, within a second.
+        m = re.match(r'^/api/pages/([^/]+)/agent/bye$', path)
+        if m and (self.headers.get('Origin') in (None, '', 'null') or self.same_origin()):
+            CHANNELS.bye(m.group(1), self.editor_id(parse_qs(urlsplit(self.path).query)))
+            return self.send_json(200, {})
+        if m or not self.same_origin():
+            return
+        if path == '/api/agent-key':
+            return self.send_json(200, {'key': self.agent_key(new=True)})
+        m = re.match(r'^/api/pages/([^/]+)/agent/([0-9a-f]{16})$', path)
+        if m:
+            value = self.body(16 * 1024 * 1024)
+            if value is None:
+                return
+            return self.send_json(200 if CHANNELS.answer(m.group(1), m.group(2), value) else 410, {})
         if path == '/api/export':
             return self.export()
         if path == '/api/site':
@@ -339,7 +520,15 @@ class Handler(SimpleHTTPRequestHandler):
 
     # Deleting moves a page to the trash, from where it can come back.
     def do_DELETE(self):
-        if not self.allowed() or not self.same_origin():
+        if not self.allowed():
+            return
+        # an MCP client ending its session: there is nothing to end
+        if urlsplit(self.path).path == '/mcp':
+            self.send_response(405)
+            self.send_header('Allow', 'POST')
+            self.send_header('Content-Length', '0')
+            return self.end_headers()
+        if not self.same_origin():
             return
         m = re.match(r'^/api/pages/([^/]+)$', urlsplit(self.path).path)
         folder = m and self.page_dir(m.group(1))
@@ -353,26 +542,126 @@ class Handler(SimpleHTTPRequestHandler):
             shutil.move(str(folder), str(self.data / 'trash' / binned))
         self.send_json(200, {'trash': binned})
 
+    # The editor with a page open waits here for agents' requests (it answers each one with a POST).
+    def inbox(self, name):
+        if not self.page_dir(name):
+            return self.send_error(404, 'No page by that name')
+        query = parse_qs(urlsplit(self.path).query)
+        try:
+            wait = min(Channels.EDITOR_WAIT, max(0.0, float(query.get('wait', ['0'])[0])))
+        except ValueError:
+            wait = 0.0
+        request = CHANNELS.next(name, self.editor_id(query), wait)
+        if request is None:
+            self.send_response(204)
+            self.send_header('Content-Length', '0')
+            return self.end_headers()
+        self.send_json(200, request)
+
+    @staticmethod
+    def editor_id(query):
+        editor = query.get('editor', [''])[0]
+        return editor if re.match(r'^[0-9a-f]{8,32}$', editor) else 'editor'
+
+    def agent_pages(self):
+        return [{**p, 'open': CHANNELS.is_open(p['name']), 'url': self.address() + p['url']} for p in self.listing()]
+
+    def address(self):
+        return ('https' if self.headers.get('X-Forwarded-Proto') == 'https' else 'http') + '://' + (self.headers.get('Host') or f'127.0.0.1:{self.port}')
+
+    # (status, answer) for an agent's request to a page
+    def agent_ask(self, name, request):
+        if not self.page_dir(name):
+            return 404, {'ok': False, 'error': f'There is no page "{name}". clay_pages lists them.'}
+        got = CHANNELS.ask(name, request)
+        if got is None:
+            return 409, {'ok': False, 'error': f'Nobody has "{name}" open in Clay right now. Ask the person to open {self.address()}/p/{name}/ ; your changes appear there as you make them.'}
+        if got is False:
+            return 504, {'ok': False, 'error': 'The editor did not answer in time. The person may have closed the page or be busy; try again.'}
+        return (200 if got.get('ok') else 422), got
+
+    def agent_reply(self, status, value):
+        self.send_json(status, value)
+
+    # MCP over HTTP: one JSON-RPC request in, one JSON answer out. No streams, no server-sent requests.
+    def mcp(self):
+        value = self.body(8 * 1024 * 1024)
+        if value is None:
+            return
+        method, rid, params = value.get('method'), value.get('id'), value.get('params') or {}
+        if 'id' not in value:
+            self.send_response(202)
+            self.send_header('Content-Length', '0')
+            return self.end_headers()
+        session = self.headers.get('Mcp-Session-Id', '')
+        headers, result, error = {}, None, None
+        if method == 'initialize':
+            session = secrets.token_hex(16)
+            with LOCK:
+                SESSIONS[session] = agent_name((params.get('clientInfo') or {}).get('name'))
+                while len(SESSIONS) > 200:
+                    SESSIONS.pop(next(iter(SESSIONS)))
+            headers['Mcp-Session-Id'] = session
+            result = {'protocolVersion': params.get('protocolVersion') or '2025-06-18', 'capabilities': {'tools': {}},
+                      'serverInfo': {'name': 'clay-studio', 'version': '0.3'}, 'instructions': MCP_ABOUT}
+        elif method == 'ping':
+            result = {}
+        elif method == 'tools/list':
+            result = {'tools': MCP_TOOLS}
+        elif method == 'tools/call':
+            ok, out = self.tool(params.get('name'), params.get('arguments') or {}, SESSIONS.get(session, 'An agent'))
+            result = {'content': [{'type': 'text', 'text': json.dumps(out, ensure_ascii=False, indent=1)}], 'isError': not ok}
+        else:
+            error = {'code': -32601, 'message': f'Unknown method {method}'}
+        data = json.dumps({'jsonrpc': '2.0', 'id': rid, **({'error': error} if error else {'result': result})}).encode('utf-8')
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        for k, v in headers.items():
+            self.send_header(k, v)
+        self.send_header('Content-Length', str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def tool(self, name, args, who):
+        if name == 'clay_pages':
+            return True, self.agent_pages()
+        if name == 'clay_new_page':
+            made = self.make_page(str(args.get('start') or 'blank'), args.get('title', ''))
+            if isinstance(made, str):
+                return False, {'error': made}
+            return True, {**made, 'url': self.address() + made['url'], 'next': 'Ask the person to open this page in Clay; then you can read and change it.'}
+        if name in ('clay_read_page', 'clay_change_page'):
+            request = {'read': True} if name == 'clay_read_page' else {'actions': args.get('actions'), 'say': args.get('say')}
+            status, out = self.agent_ask(str(args.get('page', '')), {**request, 'as': who})
+            return status == 200, out
+        return False, {'error': f'There is no tool {name}.'}
+
     def create(self):
         value = self.body(64 * 1024)
         if value is None:
             return
-        start = str(value.get('from', 'blank'))
+        made = self.make_page(str(value.get('from', value.get('start', 'blank'))), value.get('title'))
+        if isinstance(made, str):
+            return self.send_error(404 if made.startswith('No page') else 400, made)
+        self.send_json(201, made)
+
+    # A new page from a starter or a copy of another; what went wrong, as text, if it can't be made.
+    def make_page(self, start, title):
         with LOCK:
             taken = {p.name for p in self.pages.iterdir()} if self.pages.is_dir() else set()
             if start.startswith('copy:'):
                 source = self.page_dir(start[5:])
                 if not source:
-                    return self.send_error(404, 'No page by that name to copy')
-                title = clean_title(value.get('title') or read_json(source / 'meta.json', {}).get('title', source.name) + ' (copy)')
+                    return 'No page by that name to copy'
+                title = clean_title(title or read_json(source / 'meta.json', {}).get('title', source.name) + ' (copy)')
                 html = (source / 'page.html').read_text(encoding='utf-8')
                 state = read_json(source / 'state.json', {})
                 state['rev'] = 0
             elif start in STARTERS:
-                title = clean_title(value.get('title', ''))
+                title = clean_title(title or '')
                 html, state = STARTERS[start].read_text(encoding='utf-8'), None
             else:
-                return self.send_error(400, 'Start from blank, links, sample or copy:<page>')
+                return 'Start from blank, links, sample or copy:<page>'
             name = name_for(title, taken)
             folder = self.pages / name
             folder.mkdir(parents=True)
@@ -380,7 +669,7 @@ class Handler(SimpleHTTPRequestHandler):
             if state:
                 write(folder / 'state.json', json.dumps(state))
             write(folder / 'meta.json', json.dumps({'title': title, 'created': now(), 'updated': now()}))
-        self.send_json(201, {'name': name, 'title': title, 'url': f'/p/{name}/'})
+        return {'name': name, 'title': title, 'url': f'/p/{name}/'}
 
     def restore(self, binned):
         m = BINNED.match(binned)

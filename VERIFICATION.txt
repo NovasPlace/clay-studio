@@ -337,3 +337,58 @@ Links between pages and Export site, 2026-10-09 (Claude)
     13/13, storage 5/5, split 6/6, revision 9/9, motion 8/8, npm test 22/22.
   Not done: links in the classic editor (it has no pages); choosing which
     pages go into a site (all of them do).
+
+Building together with agents, 2026-10-09 (Claude)
+  serve.py: an agent channel. An editor with a page open waits for agents'
+    requests (long-poll, 25s, only while its tab is showing) and answers each;
+    an agent's request waits up to 30s for the answer. Editors have an id and
+    say when they've gone (a beacon on hide or close; Firefox sends those with
+    Origin "null"), so agents are told at once that nobody has the page open,
+    with the address to ask the person to open. Agents use a key (data/
+    agent.json; the editor gets it, and can make a new one) as a bearer token,
+    instead of the password. /mcp is MCP over HTTP (one JSON answer per
+    request; GET and DELETE 405) with clay_pages, clay_new_page,
+    clay_read_page and clay_change_page; the MCP client's name becomes the
+    agent's name (claude-code is Claude). The same as plain HTTP under
+    /api/agent/. Nothing in the data folder is served as a file any more
+    (before, a data folder inside the app folder served site.json, and would
+    have served the key).
+  agent.js (loaded on server pages, not in hidden ones): reads the page as
+    pieces with ids, kinds, desktop positions, words in parts, links and
+    colours; applies place, text, link, add (fresh, or like an existing
+    piece), remove, paint, pin, group, ungroup and canvas. A request is one
+    step labelled "<agent>: <what it said>", all or nothing (restored on the
+    first error, which is named), held while the person is mid-gesture or a
+    dialog is open, refused in the phone layout. Touched pieces light up;
+    "<agent> is here" shows for two minutes. The Agent dialog gives the Claude
+    Code command and the Codex setup with this server and key.
+  studio.js: mark / textNow / linkNow / removeNow, so several changes are one
+    step with undo for text and links. clay-mcp.py: MCP over stdio for
+    setups that run a program, passed to /mcp (standard library only).
+  qa/server.test.py: 70/70, adding 22 agent checks (the key, refusals, a
+    stand-in editor answering reads and changes, errors passed back, only
+    answers to handed-out requests, the goodbye, MCP initialize, notifications,
+    tools, a new page, a closed page, the agent's name, unknown methods and
+    tools, GET/DELETE, foreign origins, clay-mcp.py both ways, the password
+    and the key, the key never served). The harness now drains server output:
+    a full pipe had begun to stop servers mid-request.
+  Headless Waterfox, real editor, the agent speaking MCP over HTTP (agent):
+    17/17. Pages made by the agent; a closed page says to open it; open once
+    the person does; the read matches the screen to the pixel, with parts,
+    links and colours; "Claude is here"; three cards placed as one step
+    labelled "Claude: moved the first row down", saved, undone by the person;
+    words, a page link, a menu link and a card copied from another with a
+    home network address; all or nothing with the failing action named;
+    group, paint, move a group, a member refused alone; a change waits for
+    the person's drag to end; the dialog's command and config; a new key
+    shuts out the old; the agent's steps in the history after reopening;
+    closing the page tells the agent within milliseconds; no errors.
+  Docker (WSL), over the network: 5/5 (the key; refused without it;
+    clay-mcp.py makes a page with the address as reached; a closed page says
+    where to open it; tidied).
+  Regression: site 18/18, pages 11/11, Sculpt 30/30, groups 8/8, Layout
+    tools and classic 13/13, storage 5/5, split 6/6, revision 9/9, motion
+    8/8, npm test 22/22.
+  Not tried: a real Claude Code or Codex session (the protocol was tested
+    with a client written to the MCP spec, and through clay-mcp.py). An agent
+    can't change a page nobody has open.

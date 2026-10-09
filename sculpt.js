@@ -241,4 +241,9 @@
   window.addEventListener('error',()=>{if(!seenError){seenError=true;say('Something interrupted the editor. Your last saved work stays here; reload to recover.');}});
   document.documentElement.setAttribute('data-sculpting','');setTool('hand');refresh();
   try{if(sessionStorage.getItem('clay-view-site')){sessionStorage.removeItem('clay-view-site');action('preview');}}catch(err){}
+  // Agents reach a page on a Clay server through agent.js, with the same pieces, rules and undo as your hands.
+  // A page opened out of sight (Export site) never takes their changes.
+  window.ClaySculpt={shell,field,root,R,G,B,q,say,items,bounds,model,mobileRules,select,refresh,webAddress,pieceName,
+    busy:()=>gesture?'You are in the middle of a gesture.':dialog.open||linkDialog.open?'A dialog is open in the editor.':phone||root.clientWidth<=767?'The editor is showing the phone layout.':''};
+  if(B.where==='server'&&window===window.top){const s=document.createElement('script');s.src='agent.js';s.dataset.clayRuntime='';document.body.appendChild(s);}
 })();
