@@ -86,7 +86,9 @@
       case 'group':{if(!Array.isArray(a.pieces)||a.pieces.length<2)throw new Error('pieces lists at least two pieces.');const us=[...new Set(a.pieces.map(unit))];if(us.length<2)throw new Error('pieces lists at least two different pieces.');
         const g=R.wrap(us);if(!g)throw new Error('Those pieces can\'t be grouped.');touched.add(g);return {ok:true,id:g.id};}
       case 'ungroup':{const g=unit(a.piece);if(!R.isGroup(g))throw new Error('"'+a.piece+'" is not a group.');R.ungroup(g).forEach(e=>touched.add(e));return {ok:true};}
-      case 'canvas':{const h=num(a.height,'height');if(h<lowest()+20)throw new Error('The pieces reach down to '+round(lowest())+'px; the canvas can\'t be shorter than that.');B.write([{el:field,css:{height:round(h)+'px'}}],label);return {ok:true};}
+      // shorter than the pieces reach fits the canvas to them, so nothing is ever cut off
+      case 'canvas':{const want=round(num(a.height,'height')),low=Math.ceil(lowest()),h=Math.max(want,low);B.write([{el:field,css:{height:h+'px'}}],label);
+        return h===want?{ok:true,height:h}:{ok:true,height:h,note:'The pieces reach down to '+low+'px, so the canvas ends there.'};}
       default:throw new Error('do is one of place, text, link, add, remove, paint, pin, group, ungroup, canvas.');}}
   const quoted=id=>{const el=document.getElementById(id);return el?'“'+S.pieceName(el).slice(0,32)+'”':'a piece';};
   function phrase(a){if(!a)return '';switch(a.do){case 'place':return 'moved '+quoted(a.piece);case 'text':return 'rewrote '+quoted(a.piece);case 'link':return 'linked '+quoted(a.piece);case 'add':return 'added '+(a.like?'a piece like '+quoted(a.like):'a '+a.kind);

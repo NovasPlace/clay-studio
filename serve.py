@@ -189,7 +189,7 @@ ACTIONS = '''Each action is an object with "do", and pieces are named by the ids
 - {"do":"paint","piece":id,"fill":"#ffd66b","text":"#24323c"} colours a piece's background, its words, or both.
 - {"do":"pin","piece":id,"pinned":true|false} pinned pieces stay put when the person sculpts.
 - {"do":"group","pieces":[id,...]} sticks pieces together; they move as one and stay together on phones. {"do":"ungroup","piece":id}
-- {"do":"canvas","height":px} makes the page taller or shorter.
+- {"do":"canvas","height":px} makes the page taller or shorter; asked to be shorter than its pieces, it ends just below the lowest one.
 All the actions in one call are one step in the person's history (one Undo), and either all happen or none do.'''
 MCP_TOOLS = [
     {'name': 'clay_pages', 'description': 'List the pages in Clay Studio: name, title, whether it is open in an editor right now (a page has to be open to be read or changed), and which is the home page.',

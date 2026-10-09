@@ -389,6 +389,12 @@ Building together with agents, 2026-10-09 (Claude)
   Regression: site 18/18, pages 11/11, Sculpt 30/30, groups 8/8, Layout
     tools and classic 13/13, storage 5/5, split 6/6, revision 9/9, motion
     8/8, npm test 22/22.
-  Not tried: a real Claude Code or Codex session (the protocol was tested
-    with a client written to the MCP spec, and through clay-mcp.py). An agent
-    can't change a page nobody has open.
+  Real Claude Code 2.1.289 (claude -p, the MCP server given for the run
+    only), on the links page open in headless Waterfox, asked to rename
+    Photos, point Films at Jellyfin on 192.168.1.20:8096 and add a matching
+    Games card below the others: 6/6, twice (31s and 8 turns the first time).
+    It used the tools unaided; the page showed "Claude is here" and its
+    changes as "Claude: ..." steps. Its first summary said a shorter canvas
+    was refused, so canvas now fits the pieces instead (agent 18/18 with that
+    check). Codex not tried: its usage limit was reached (until 2026-10-15).
+  Not done: an agent can't change a page nobody has open.
