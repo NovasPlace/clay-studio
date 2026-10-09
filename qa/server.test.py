@@ -333,25 +333,98 @@ began = time.monotonic()
 st = agent('GET', '/api/agent/pages/agent-home')[0]
 check('58 When the editor says it has gone (a closing tab\'s beacon, Origin "null"), agents are told at once', bye == 200 and was_open and waited == [204] and st == 409 and time.monotonic() - began < 1, (bye, was_open, waited, st))
 
+
+def poll(path):
+    st, _, out = s.req('GET', path)
+    return st, (json.loads(out) if st == 200 else None)
+
+
+def hosted_editor(page, editor, answer):
+    """Stands in for an editor opened out of sight by a host: waits for one request, answers it, and keeps waiting."""
+    got = []
+
+    def run():
+        while True:
+            st, req = poll(f'/api/pages/{page}/agent?wait=5&editor={editor}&hosted=1')
+            if st == 200 and req.get('close'):
+                got.append('close')
+                return
+            if st == 200:
+                got.append(req)
+                body = json.dumps(answer(req)).encode()
+                s.req('POST', f"/api/pages/{page}/agent/{req['id']}", headers={'Origin': f'http://127.0.0.1:{s.port}', **J, 'Content-Length': str(len(body))}, body=body)
+            if len(got) > 3:
+                return
+    threading.Thread(target=run, daemon=True).start()
+    return got
+
+
+def host(n=1):
+    """Stands in for a Clay tab that is showing: opens the pages agents ask for, out of sight."""
+    asked = []
+
+    def run():
+        for _ in range(n):
+            st, summons = poll('/api/host?wait=8&host=aaaaaaaaaaaaaaaa')
+            if st == 200:
+                asked.append(summons)
+                asked.append(hosted_editor(summons['open'], 'bbbbbbbbbbbbbbbb', lambda req: {'ok': True, 'page': {'hidden': True}}))
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    time.sleep(.3)
+    return t, asked
+
+
+st, r, _ = agent('GET', '/api/agent/pages/agent-home')
+check('59 With Clay open nowhere, agents are told to ask the person to open Clay (the page list is enough), or the page', st == 409 and 'Clay is not open anywhere' in r['error']
+      and f'http://127.0.0.1:{s.port}/ ' in r['error'] and f'/p/agent-home/' in r['error'], r)
+t, asked = host()
+st, r, _ = agent('GET', '/api/agent/pages/agent-home', headers={'X-Clay-Agent-Name': 'Script'})
+check('60 With a Clay tab showing, a page nobody has open is opened out of sight, and the agent is answered from there', st == 200 and r == {'ok': True, 'page': {'hidden': True}}
+      and asked[0] == {'open': 'agent-home', 'as': 'Script'} and asked[1][0]['read'] is True, (st, r, asked[:1]))
+listed = agent('GET', '/api/agent/pages')[1][0]
+st2, r2, _ = agent('GET', '/api/agent/pages/agent-home')
+check('61 Opened out of sight, it is not listed as open by the person; further requests go to it, without asking the host again', listed['open'] is False and st2 == 200 and len(asked) == 2, (listed, st2))
+person = []
+pt = threading.Thread(target=lambda: person.append(poll('/api/pages/agent-home/agent?wait=5&editor=cccccccccccccccc')), daemon=True)
+pt.start()
+time.sleep(.5)
+gave_way = asked[1][-1] == 'close'
+st3 = [None]
+at = threading.Thread(target=lambda: st3.__setitem__(0, agent('GET', '/api/agent/pages/agent-home')[0]), daemon=True)
+at.start()
+pt.join(6)
+if person and person[0][0] == 200:
+    body = json.dumps({'ok': True, 'page': {'by': 'person'}}).encode()
+    s.req('POST', f"/api/pages/agent-home/agent/{person[0][1]['id']}", headers={'Origin': f'http://127.0.0.1:{s.port}', **J, 'Content-Length': str(len(body))}, body=body)
+at.join(5)
+check('62 When the person opens the page, the one out of sight is told to close, and requests go to the person\'s editor', gave_way and bool(person) and person[0][0] == 200
+      and person[0][1]['read'] is True and st3[0] == 200, (asked[1][-1:], person, st3))
+call('POST', '/api/pages/agent-home/agent/bye?editor=cccccccccccccccc')
+call('POST', '/api/host/bye?host=aaaaaaaaaaaaaaaa')
+began = time.monotonic()
+st = agent('GET', '/api/agent/pages/agent-home')[0]
+check('63 When the last Clay tab goes, agents are told at once', st == 409 and time.monotonic() - began < 1, st)
+
 # MCP
 st, r, hd = rpc('initialize', {'protocolVersion': '2025-06-18', 'capabilities': {}, 'clientInfo': {'name': 'claude-code', 'version': '2'}})
 session = hd.get('mcp-session-id')
-check('59 MCP: initialize answers with tools, instructions and a session', st == 200 and r['result']['protocolVersion'] == '2025-06-18' and 'tools' in r['result']['capabilities']
-      and 'open in Clay' in r['result']['instructions'] and bool(session), r)
-check('60 MCP: a notification is accepted without an answer', agent('POST', '/mcp', {'jsonrpc': '2.0', 'method': 'notifications/initialized'}, headers={'Mcp-Session-Id': session})[0] == 202)
+check('64 MCP: initialize answers with tools, instructions and a session', st == 200 and r['result']['protocolVersion'] == '2025-06-18' and 'tools' in r['result']['capabilities']
+      and 'opened out of sight' in r['result']['instructions'] and bool(session), r)
+check('65 MCP: a notification is accepted without an answer', agent('POST', '/mcp', {'jsonrpc': '2.0', 'method': 'notifications/initialized'}, headers={'Mcp-Session-Id': session})[0] == 202)
 tools = rpc('tools/list', session=session)[1]['result']['tools']
-check('61 MCP: four tools, the change tool explaining every action', [t['name'] for t in tools] == ['clay_pages', 'clay_new_page', 'clay_read_page', 'clay_change_page']
+check('66 MCP: four tools, the change tool explaining every action', [t['name'] for t in tools] == ['clay_pages', 'clay_new_page', 'clay_read_page', 'clay_change_page']
       and all(f'"do":"{d}"' in tools[3]['description'] for d in ('place', 'text', 'link', 'add', 'remove', 'paint', 'pin', 'group', 'ungroup', 'canvas')))
 r = rpc('tools/call', {'name': 'clay_new_page', 'arguments': {'title': 'From MCP', 'start': 'blank'}}, session=session)[1]['result']
 out = json.loads(r['content'][0]['text'])
-check('62 MCP: clay_new_page makes a page and says to ask the person to open it', not r['isError'] and out['name'] == 'from-mcp' and out['url'].endswith('/p/from-mcp/') and 'open' in out['next'], r)
+check('67 MCP: clay_new_page makes a page and says what to do next', not r['isError'] and out['name'] == 'from-mcp' and out['url'].endswith('/p/from-mcp/') and 'clay_read_page' in out['next'], r)
 r = rpc('tools/call', {'name': 'clay_read_page', 'arguments': {'page': 'from-mcp'}}, session=session)[1]['result']
-check('63 MCP: reading a page nobody has open is an error that says what to do', r['isError'] and 'Ask the person to open' in json.loads(r['content'][0]['text'])['error'], r)
+check('68 MCP: reading a page nobody has open is an error that says what to do', r['isError'] and 'Ask the person to open' in json.loads(r['content'][0]['text'])['error'], r)
 t = editor()
 r = rpc('tools/call', {'name': 'clay_change_page', 'arguments': {'page': 'agent-home', 'actions': [{'do': 'canvas', 'height': 1400}], 'say': 'more room'}}, session=session)[1]['result']
 t.join(5)
-check('64 MCP: changes carry the agent\'s name from its MCP client (claude-code is Claude)', not r['isError'] and seen[-1]['as'] == 'Claude' and seen[-1]['say'] == 'more room', seen[-1])
-check('65 MCP: unknown methods and tools are errors; GET is not offered; a page of another website is refused', rpc('resources/list', session=session)[1]['error']['code'] == -32601
+check('69 MCP: changes carry the agent\'s name from its MCP client (claude-code is Claude)', not r['isError'] and seen[-1]['as'] == 'Claude' and seen[-1]['say'] == 'more room', seen[-1])
+check('70 MCP: unknown methods and tools are errors; GET is not offered; a page of another website is refused', rpc('resources/list', session=session)[1]['error']['code'] == -32601
       and rpc('tools/call', {'name': 'nope', 'arguments': {}}, session=session)[1]['result']['isError'] and agent('GET', '/mcp')[0] == 405 and agent('DELETE', '/mcp')[0] == 405
       and rpc('ping', headers={'Origin': 'http://evil.example'})[0] == 403)
 
@@ -362,15 +435,15 @@ lines = '\n'.join(json.dumps(m) for m in ({'jsonrpc': '2.0', 'id': 1, 'method': 
                                           {'jsonrpc': '2.0', 'id': 2, 'method': 'tools/call', 'params': {'name': 'clay_pages', 'arguments': {}}})) + '\n'
 env = {**os.environ, 'CLAY_URL': f'http://127.0.0.1:{s.port}', 'CLAY_AGENT_KEY': KEY}
 got = [json.loads(x) for x in subprocess.run(bridge, input=lines, capture_output=True, text=True, env=env, timeout=20).stdout.splitlines()]
-check('66 clay-mcp.py passes MCP between a program-based setup and the server', [g['id'] for g in got] == [1, 2] and 'from-mcp' in got[1]['result']['content'][0]['text'], got)
+check('71 clay-mcp.py passes MCP between a program-based setup and the server', [g['id'] for g in got] == [1, 2] and 'from-mcp' in got[1]['result']['content'][0]['text'], got)
 got = [json.loads(x) for x in subprocess.run(bridge, input=lines, capture_output=True, text=True, env={**env, 'CLAY_AGENT_KEY': 'wrong'}, timeout=20).stdout.splitlines()]
-check('67 With the wrong key it says to copy the key again', len(got) == 2 and 'copy it again' in got[0]['error']['message'], got)
-check('68 It is served by Clay, for downloading', s.req('GET', '/clay-mcp.py')[0] == 200)
+check('72 With the wrong key it says to copy the key again', len(got) == 2 and 'copy it again' in got[0]['error']['message'], got)
+check('73 It is served by Clay, for downloading', s.req('GET', '/clay-mcp.py')[0] == 200)
 s.stop()
 
 # A password guards the editor; agents still use their key
 s = Server(env={'CLAY_PASSWORD': 'pw'})
-check('69 With a password, the key needs the password, and agents need only the key', s.req('GET', '/api/agent-key')[0] == 401
+check('74 With a password, the key needs the password, and agents need only the key', s.req('GET', '/api/agent-key')[0] == 401
       and agent('GET', '/api/agent/pages', key=json.loads(s.req('GET', '/api/agent-key', auth='u:pw')[2])['key'])[0] == 200 and agent('GET', '/api/agent/pages', key='pw')[0] == 401)
 s.stop()
 
@@ -380,7 +453,7 @@ s = Server(['--data', str(inside)])
 call('POST', '/api/pages', {'title': 'Secret', 'from': 'blank'})
 call('PUT', '/api/pages/secret/state', {'rev': 0, 'page': 'hidden'})
 call('GET', '/api/agent-key')
-check('70 Nothing in the data folder is served as a file (pages, the agent key), even with it inside the app', s.req('GET', '/data-test-server/pages/secret/state.json')[0] == 404
+check('75 Nothing in the data folder is served as a file (pages, the agent key), even with it inside the app', s.req('GET', '/data-test-server/pages/secret/state.json')[0] == 404
       and s.req('GET', '/data-test-server/pages/secret/page.html')[0] == 404 and (inside / 'agent.json').is_file() and s.req('GET', '/data-test-server/agent.json')[0] == 404)
 s.stop()
 shutil.rmtree(inside)

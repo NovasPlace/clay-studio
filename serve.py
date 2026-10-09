@@ -111,19 +111,29 @@ def retitle(html, title):
 class Channels:
     """Agents' requests for a page, waiting for an editor that has it open. An editor counts as open while it is waiting
     for requests, and for a little while after (it is busy between requests), until it says it has gone: its tab
-    closed or was hidden."""
-    PRESENT, EDITOR_WAIT, AGENT_WAIT = 35, 25, 30
+    closed or was hidden. A page nobody has open is opened out of sight by a host: any Clay tab that is showing (the
+    page list, or another page). That hidden editor gives way as soon as the person opens the page themselves."""
+    PRESENT, EDITOR_WAIT, AGENT_WAIT, HOSTING = 35, 25, 30, 20
 
     def __init__(self):
-        self.cond, self.pages = threading.Condition(), {}
+        self.cond, self.pages, self.hosts = threading.Condition(), {}, {'queue': [], 'waiters': {}}
 
     def page(self, name):
         return self.pages.setdefault(name, {'queue': [], 'out': set(), 'answers': {}, 'editors': {}})
 
-    def is_open(self, name):
+    def live(self, waiters, but=None):
+        t = time.monotonic()
+        return [e for e in waiters.values() if e is not but and not e['gone'] and (e['waiting'] or t - e['seen'] < self.PRESENT)]
+
+    # open in an editor; by_person leaves out the ones opened out of sight
+    def is_open(self, name, by_person=False):
         with self.cond:
-            ch, t = self.pages.get(name), time.monotonic()
-            return bool(ch) and any(not e['gone'] and (e['waiting'] or t - e['seen'] < self.PRESENT) for e in ch['editors'].values())
+            ch = self.pages.get(name)
+            return bool(ch) and any(not (by_person and e['hosted']) for e in self.live(ch['editors']))
+
+    def hosting(self):
+        with self.cond:
+            return bool(self.live(self.hosts['waiters']))
 
     def bye(self, name, editor):
         with self.cond:
@@ -132,12 +142,29 @@ class Channels:
                 e['gone'] = True
                 self.cond.notify_all()
 
-    # for an agent: hand the request over and wait for the editor's answer; None if no editor has the page open
+    def host_bye(self, host):
+        with self.cond:
+            h = self.hosts['waiters'].get(host)
+            if h:
+                h['gone'] = True
+                self.cond.notify_all()
+
+    # for an agent: hand the request over and wait for the editor's answer. None if no editor has the page open and no
+    # host could open it; False if the editor didn't answer in time.
     def ask(self, name, request):
-        if not self.is_open(name):
-            return None
         request = {**request, 'id': secrets.token_hex(8)}
         with self.cond:
+            if not self.is_open(name):
+                if not self.hosting():
+                    return None
+                summons = {'open': name, 'as': request.get('as')}
+                self.hosts['queue'].append(summons)
+                self.cond.notify_all()
+                opened = self.cond.wait_for(lambda: self.is_open(name), self.HOSTING)
+                if summons in self.hosts['queue']:
+                    self.hosts['queue'].remove(summons)
+                if not opened:
+                    return None
             ch = self.page(name)
             ch['queue'].append(request)
             self.cond.notify_all()
@@ -148,16 +175,23 @@ class Channels:
             ch['out'].discard(request['id'])
             return False
 
-    # for an editor: the next request, waiting a while for one
-    def next(self, name, editor, wait):
+    # for an editor: the next request, waiting a while for one. One opened out of sight is told to close once the
+    # person has the page open; requests go to the person's.
+    def next(self, name, editor, wait, hosted=False):
         with self.cond:
             ch, t = self.page(name), time.monotonic()
             for k in [k for k, e in ch['editors'].items() if not e['waiting'] and (e['gone'] or t - e['seen'] > 600)]:
                 del ch['editors'][k]
-            e = ch['editors'].setdefault(editor, {'waiting': 0, 'seen': t, 'gone': False})
-            e.update(gone=False, waiting=e['waiting'] + 1, seen=t)
+            e = ch['editors'].setdefault(editor, {'waiting': 0, 'seen': t, 'gone': False, 'hosted': hosted})
+            e.update(gone=False, waiting=e['waiting'] + 1, seen=t, hosted=hosted)
+            # an agent may be waiting for this page to open; one opened out of sight may have to give way to this one
+            self.cond.notify_all()
+            person = lambda: hosted and any(not x['hosted'] for x in self.live(ch['editors'], but=e))
             try:
-                self.cond.wait_for(lambda: ch['queue'] or e['gone'], wait)
+                self.cond.wait_for(lambda: e['gone'] or person() or ch['queue'], wait)
+                if person():
+                    e['gone'] = True
+                    return {'close': True}
                 if e['gone'] or not ch['queue']:
                     return None
                 request = ch['queue'].pop(0)
@@ -166,6 +200,21 @@ class Channels:
             finally:
                 e['waiting'] -= 1
                 e['seen'] = time.monotonic()
+
+    # for a host: the next page to open for an agent, waiting a while for one
+    def next_host(self, host, wait):
+        with self.cond:
+            hs, t = self.hosts, time.monotonic()
+            for k in [k for k, h in hs['waiters'].items() if not h['waiting'] and (h['gone'] or t - h['seen'] > 600)]:
+                del hs['waiters'][k]
+            h = hs['waiters'].setdefault(host, {'waiting': 0, 'seen': t, 'gone': False})
+            h.update(gone=False, waiting=h['waiting'] + 1, seen=t)
+            try:
+                self.cond.wait_for(lambda: hs['queue'] or h['gone'], wait)
+                return None if h['gone'] or not hs['queue'] else hs['queue'].pop(0)
+            finally:
+                h['waiting'] -= 1
+                h['seen'] = time.monotonic()
 
     def answer(self, name, rid, value):
         with self.cond:
@@ -192,20 +241,21 @@ ACTIONS = '''Each action is an object with "do", and pieces are named by the ids
 - {"do":"canvas","height":px} makes the page taller or shorter; asked to be shorter than its pieces, it ends just below the lowest one.
 All the actions in one call are one step in the person's history (one Undo), and either all happen or none do.'''
 MCP_TOOLS = [
-    {'name': 'clay_pages', 'description': 'List the pages in Clay Studio: name, title, whether it is open in an editor right now (a page has to be open to be read or changed), and which is the home page.',
+    {'name': 'clay_pages', 'description': 'List the pages in Clay Studio: name, title, whether the person has it open right now, and which is the home page.',
      'inputSchema': {'type': 'object', 'properties': {}}},
-    {'name': 'clay_new_page', 'description': 'Make a new page. It starts from "blank" (a heading, words, a button, two cards and a picture), "links" (a card per self-hosted app) or "sample" (the Clay demo page). Then ask the person to open it in Clay, so you can read and change it.',
+    {'name': 'clay_new_page', 'description': 'Make a new page. It starts from "blank" (a heading, words, a button, two cards and a picture), "links" (a card per self-hosted app) or "sample" (the Clay demo page). You can then read and change it.',
      'inputSchema': {'type': 'object', 'properties': {'title': {'type': 'string'}, 'start': {'type': 'string', 'enum': ['blank', 'links', 'sample']}}, 'required': ['title']}},
-    {'name': 'clay_read_page', 'description': 'Read a page that is open in Clay: every piece with its id, kind, position and size in pixels on the desktop canvas, its words (in parts, for cards and menus), links and colours. The person may be changing it too, so read it again before a new round of changes.',
+    {'name': 'clay_read_page', 'description': 'Read a page: every piece with its id, kind, position and size in pixels on the desktop canvas, its words (in parts, for cards and menus), links and colours. The person may be changing it too, so read it again before a new round of changes.',
      'inputSchema': {'type': 'object', 'properties': {'page': {'type': 'string', 'description': 'The page name from clay_pages'}}, 'required': ['page']}},
-    {'name': 'clay_change_page', 'description': 'Change a page that is open in Clay. The person sees each change appear as you make it, labelled with your name and what you said, and can undo it. Returns the page as it is afterwards, and warns about pieces that overlap.\n' + ACTIONS,
+    {'name': 'clay_change_page', 'description': 'Change a page. If the person has it open they see each change appear as you make it, labelled with your name and what you said; either way it goes into the page\'s history, where they can undo it. Returns the page as it is afterwards, and warns about pieces that overlap.\n' + ACTIONS,
      'inputSchema': {'type': 'object', 'properties': {'page': {'type': 'string'}, 'say': {'type': 'string', 'description': 'A few words for the person, saying what you did, like "made the cards three across"'},
                                                       'actions': {'type': 'array', 'items': {'type': 'object', 'properties': {'do': {'type': 'string', 'enum': ['place', 'text', 'link', 'add', 'remove', 'paint', 'pin', 'group', 'ungroup', 'canvas']}}, 'required': ['do']}}},
                      'required': ['page', 'actions']}},
 ]
-MCP_ABOUT = ('Clay Studio is a web page editor where a person shapes pages by hand. You can work on the same page with them: '
-             'list the pages, read one, and change it with small steps the person sees as they happen and can undo. '
-             'A page has to be open in Clay for you to read or change it; if it is not, ask the person to open it.')
+MCP_ABOUT = ('Clay Studio is a web page editor where a person shapes pages by hand. You can work on the same pages with them: '
+             'list the pages, make new ones, read one, and change it with small steps the person sees as they happen and can undo. '
+             'Clay has to be open in the person\'s browser (any page, or the page list) for you to read or change pages; '
+             'pages they don\'t have open are opened out of sight. If Clay isn\'t open, you are told what to ask them.')
 
 
 def agent_name(client):
@@ -394,6 +444,8 @@ class Handler(SimpleHTTPRequestHandler):
         m = re.match(r'^/api/pages/([^/]+)/agent$', path)
         if m:
             return self.inbox(m.group(1))
+        if path == '/api/host':
+            return self.host()
         if path == '/api/agent/pages':
             return self.send_json(200, self.agent_pages())
         m = re.match(r'^/api/agent/pages/([^/]+)$', path)
@@ -444,9 +496,12 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_error(404)
         # A closing tab says it has gone with a beacon, which comes with Origin "null" or none. At worst a stranger's would
         # make an agent wait for the editor's next call, within a second.
-        m = re.match(r'^/api/pages/([^/]+)/agent/bye$', path)
+        m = re.match(r'^/api/pages/([^/]+)/agent/bye$', path) or re.match(r'^/api/host/bye$', path)
         if m and (self.headers.get('Origin') in (None, '', 'null') or self.same_origin()):
-            CHANNELS.bye(m.group(1), self.editor_id(parse_qs(urlsplit(self.path).query)))
+            if path == '/api/host/bye':
+                CHANNELS.host_bye(self.editor_id(parse_qs(urlsplit(self.path).query), 'host'))
+            else:
+                CHANNELS.bye(m.group(1), self.editor_id(parse_qs(urlsplit(self.path).query)))
             return self.send_json(200, {})
         if m or not self.same_origin():
             return
@@ -551,20 +606,34 @@ class Handler(SimpleHTTPRequestHandler):
             wait = min(Channels.EDITOR_WAIT, max(0.0, float(query.get('wait', ['0'])[0])))
         except ValueError:
             wait = 0.0
-        request = CHANNELS.next(name, self.editor_id(query), wait)
+        request = CHANNELS.next(name, self.editor_id(query), wait, hosted=query.get('hosted') == ['1'])
         if request is None:
             self.send_response(204)
             self.send_header('Content-Length', '0')
             return self.end_headers()
         self.send_json(200, request)
 
+    # A Clay tab that is showing waits here to open pages out of sight for agents.
+    def host(self):
+        query = parse_qs(urlsplit(self.path).query)
+        try:
+            wait = min(Channels.EDITOR_WAIT, max(0.0, float(query.get('wait', ['0'])[0])))
+        except ValueError:
+            wait = 0.0
+        summons = CHANNELS.next_host(self.editor_id(query, 'host'), wait)
+        if summons is None:
+            self.send_response(204)
+            self.send_header('Content-Length', '0')
+            return self.end_headers()
+        self.send_json(200, summons)
+
     @staticmethod
-    def editor_id(query):
-        editor = query.get('editor', [''])[0]
-        return editor if re.match(r'^[0-9a-f]{8,32}$', editor) else 'editor'
+    def editor_id(query, key='editor'):
+        editor = query.get(key, [''])[0]
+        return editor if re.match(r'^[0-9a-f]{8,32}$', editor) else key
 
     def agent_pages(self):
-        return [{**p, 'open': CHANNELS.is_open(p['name']), 'url': self.address() + p['url']} for p in self.listing()]
+        return [{**p, 'open': CHANNELS.is_open(p['name'], by_person=True), 'url': self.address() + p['url']} for p in self.listing()]
 
     def address(self):
         return ('https' if self.headers.get('X-Forwarded-Proto') == 'https' else 'http') + '://' + (self.headers.get('Host') or f'127.0.0.1:{self.port}')
@@ -575,7 +644,8 @@ class Handler(SimpleHTTPRequestHandler):
             return 404, {'ok': False, 'error': f'There is no page "{name}". clay_pages lists them.'}
         got = CHANNELS.ask(name, request)
         if got is None:
-            return 409, {'ok': False, 'error': f'Nobody has "{name}" open in Clay right now. Ask the person to open {self.address()}/p/{name}/ ; your changes appear there as you make them.'}
+            return 409, {'ok': False, 'error': f'Clay is not open anywhere right now, so "{name}" can\'t be opened to work on. Ask the person to open Clay at {self.address()}/ '
+                                               f'(the page list is enough) and keep it showing, or to open the page itself at {self.address()}/p/{name}/ to watch.'}
         if got is False:
             return 504, {'ok': False, 'error': 'The editor did not answer in time. The person may have closed the page or be busy; try again.'}
         return (200 if got.get('ok') else 422), got
@@ -629,7 +699,7 @@ class Handler(SimpleHTTPRequestHandler):
             made = self.make_page(str(args.get('start') or 'blank'), args.get('title', ''))
             if isinstance(made, str):
                 return False, {'error': made}
-            return True, {**made, 'url': self.address() + made['url'], 'next': 'Ask the person to open this page in Clay; then you can read and change it.'}
+            return True, {**made, 'url': self.address() + made['url'], 'next': 'Read it with clay_read_page, then change it. The person can watch at this url.'}
         if name in ('clay_read_page', 'clay_change_page'):
             request = {'read': True} if name == 'clay_read_page' else {'actions': args.get('actions'), 'say': args.get('say')}
             status, out = self.agent_ask(str(args.get('page', '')), {**request, 'as': who})

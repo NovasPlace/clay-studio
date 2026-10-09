@@ -9,6 +9,8 @@
   const inbox='/api/pages/'+page+'/agent',sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const KINDS=['text','card','button','image'];
   const me=[...crypto.getRandomValues(new Uint8Array(8))].map(b=>b.toString(16).padStart(2,'0')).join('');
+  // opened out of sight by another Clay tab (host.js) for an agent, rather than by the person
+  const hosted=window!==window.top,parent=window.parent,tellHost=m=>{if(hosted)parent.postMessage({...m,page},location.origin);};
   let stale=false,ctl=null,chipTimer=0,minted=0;
 
   // ---- reading the page ----
@@ -53,9 +55,12 @@
     if(a.height!=null&&!group){if(el.tagName==='IMG')css.height=h.toFixed(2)+'px';else if(el.dataset.kind!=='text')css['min-height']=h.toFixed(2)+'px';else throw new Error('Text is as tall as its words. Change its size or width instead.');}
     if(a.size!=null){if(el.dataset.kind!=='text')throw new Error('size is the size of the letters in a text piece.');css['font-size']=G.clamp(num(a.size,'size'),10,160)+'px';}
     B.write([{el,css}],label);if(st)R.resize(el,st,w,a.height!=null?h:st.h*w/st.w);grow(R.rect(el).y+R.rect(el).h,label);}
-  function make(a,label){let el,kind;
-    if(a.like!=null){const src=find(a.like);if(R.isGroup(src))throw new Error('like takes a single piece, not a group.');el=src.cloneNode(true);kind=src.dataset.kind;
-      [el,...el.querySelectorAll('*')].forEach(n=>{['data-cs','data-sculpt-selected','data-sculpt-locked'].forEach(k=>n.removeAttribute(k));if(n!==el)n.removeAttribute('id');});}
+  function make(a,label){let el,kind,tmpl=null;
+    // a new card or button looks like one already on the page, unless the agent says which piece to copy
+    if(a.like==null&&(a.kind==='card'||a.kind==='button'))tmpl=field.querySelector('[data-sculpt-item][data-kind="'+a.kind+'"]');
+    if(a.like!=null||tmpl){const src=tmpl||find(a.like);if(R.isGroup(src))throw new Error('like takes a single piece, not a group.');el=src.cloneNode(true);kind=src.dataset.kind;
+      [el,...el.querySelectorAll('*')].forEach(n=>{['data-cs','data-sculpt-selected','data-sculpt-locked'].forEach(k=>n.removeAttribute(k));if(n!==el)n.removeAttribute('id');});
+      if(tmpl){const ps=parts(el);(ps.length?ps:[el]).forEach(p=>{p.textContent='';});if(el.tagName==='A')el.setAttribute('href','#');}}
     else{kind=a.kind;if(!KINDS.includes(kind))throw new Error('kind is one of '+KINDS.join(', ')+', or use "like" with the id of a piece to copy its look.');
       el=document.createElement(kind==='card'?'article':kind==='button'?'a':kind==='image'?'img':'p');el.className='piece '+(kind==='card'?'note leaf':kind==='button'?'join':kind==='text'?'intro':'');
       if(kind==='card')el.innerHTML='<small></small><h2></h2><p></p>';else if(kind==='button')el.href='#';}
@@ -66,10 +71,10 @@
     const ps=parts(el).length?parts(el):[...el.querySelectorAll('small,h2,p')];
     if(a.parts!=null){if(!Array.isArray(a.parts)||a.parts.length>ps.length)throw new Error('parts gives the words for each part, up to '+ps.length+' here.');a.parts.forEach((t,i)=>{if(t!=null)ps[i].textContent=String(t);});}
     if(a.text!=null){if(kind==='image')throw new Error('Use alt for a picture\'s words.');(ps[ps.length>1?1:0]||el).textContent=words(a,'text');}
-    if(kind==='card'&&!a.like)ps.forEach(p=>{if(!p.textContent)p.remove();});
+    if(kind==='card'&&a.like==null)ps.forEach(p=>{if(!p.textContent)p.remove();});
     if(a.to!=null){if(el.tagName!=='A')throw new Error('Only a button or a link can go somewhere; this is a '+el.tagName.toLowerCase()+'.');el.setAttribute('href',a.to);}
     field.appendChild(el);B.register(el,kind);
-    const b=S.bounds(),src=a.like!=null?R.rect(find(a.like)):null,w=num(a.width,'width',src?src.w:b.w*.27);
+    const b=S.bounds(),src=a.like!=null?R.rect(find(a.like)):tmpl?R.rect(tmpl):null,w=num(a.width,'width',src?src.w:b.w*.27);
     B.write([{el,css:{position:'absolute',...(kind==='image'?{height:num(a.height,'height',190)+'px'}:{})}},S.mobileRules(el)],label);
     position(el,{x:num(a.x,'x',b.w*.06),y:num(a.y,'y',lowest()+24),width:w,size:a.size},label,true);return el;}
   // Everything a request says, one action at a time. Throws with the reason if one can't be done.
@@ -114,15 +119,21 @@
     for(let t=0;S.busy()&&t<80;t++)await sleep(100);
     const busy=S.busy();if(busy)return {ok:false,error:busy+' Try again in a moment.'};
     if(stale)return {ok:false,error:'This page was changed somewhere else. The person needs to reload it before anything else can change.'};
-    here(who);return cmd.read?{ok:true,page:describe()}:change(cmd.actions,who,cmd.say);}
+    if(!hosted)here(who);if(cmd.read)return {ok:true,page:describe()};
+    // the agent hears back once the change is saved on the server, so it holds even if this page closes straight after
+    const out=await change(cmd.actions,who,cmd.say);if(out.ok)await new Promise(r=>{B.flush(r);setTimeout(r,8000);});return out;}
   async function listen(){
     for(let wait=1000;;){
       if(document.visibilityState!=='visible'){await new Promise(r=>document.addEventListener('visibilitychange',r,{once:true}));continue;}
       let r;ctl=new AbortController();
-      try{r=await fetch(inbox+'?wait=25&editor='+me,{signal:ctl.signal,cache:'no-store'});}catch(e){if(document.visibilityState==='visible'){await sleep(wait);wait=Math.min(wait*2,15000);}continue;}
+      try{r=await fetch(inbox+'?wait=25&editor='+me+(hosted?'&hosted=1':''),{signal:ctl.signal,cache:'no-store'});}catch(e){if(document.visibilityState==='visible'){await sleep(wait);wait=Math.min(wait*2,15000);}continue;}
       wait=1000;if(r.status===204)continue;if(r.status!==200){await sleep(5000);continue;}
-      const cmd=await r.json();let out;try{out=await handle(cmd);}catch(e){out={ok:false,error:'The editor could not do that: '+e.message};}
-      try{await fetch(inbox+'/'+encodeURIComponent(cmd.id),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(out)});}catch(e){}}}
+      const cmd=await r.json();
+      // the person has opened this page themselves: theirs takes over
+      if(cmd.close){B.flush(()=>tellHost({clayAgent:'close'}));return;}
+      let out;try{out=await handle(cmd);}catch(e){out={ok:false,error:'The editor could not do that: '+e.message};}
+      try{await fetch(inbox+'/'+encodeURIComponent(cmd.id),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(out)});}catch(e){}
+      tellHost({clayAgent:'step',title:document.title,step:out.ok?out.step:''});}}
   // A hidden tab stops waiting, so it never holds one of the browser's few connections to this server, and says it has
   // gone, as a closing one does, so agents are told at once instead of waiting for an answer that won't come.
   const bye=()=>{if(ctl)ctl.abort();try{navigator.sendBeacon(inbox+'/bye?editor='+me);}catch(e){}};
@@ -130,13 +141,16 @@
   addEventListener('pagehide',bye);
   addEventListener('clay-save',e=>{if(e.detail.state==='stale')stale=true;});
 
+  window.ClayAgent={describe,change:(list,who,say)=>change(list,who||'Test',say)};
+  if(hosted){listen();return;}
+
   // ---- what you see: who is here, and how to invite one ----
   const chip=document.createElement('span');chip.className='clay-agent-chip';chip.hidden=true;chip.setAttribute('role','status');q('.clay-brand').after(chip);
   function here(who){chip.textContent=who+' is here';chip.hidden=false;clearTimeout(chipTimer);chipTimer=setTimeout(()=>{chip.hidden=true;},120000);}
   const open=document.createElement('button');open.className='clay-agent-open';open.textContent='Agent';open.title='Build this page together with Claude Code, Codex or another agent';q('.clay-export').before(open);
   const box=document.createElement('dialog');box.className='clay-dialog clay-agent';box.setAttribute('aria-labelledby','clay-agent-title');
   box.innerHTML='<div class="row"><h2 id="clay-agent-title">Build this page with an agent</h2><button data-close>Close</button></div>'+
-    '<p>An agent such as Claude Code or Codex can read this page and change it while you work on it. Its changes appear here as they happen, one step at a time, and Undo takes them back like your own. It can also make new pages, but it can only change a page that is open in Clay.</p>'+
+    '<p>An agent such as Claude Code or Codex can read this page and change it while you work on it. Its changes appear here as they happen, one step at a time, and Undo takes them back like your own. It can also make pages and work on ones you don\'t have open, as long as Clay is open somewhere: those open out of sight, and you\'ll find its changes in their history.</p>'+
     '<h3>Claude Code</h3><p>Run this once in a terminal:</p><pre data-for="claude"></pre><button data-copy="claude">Copy</button>'+
     '<h3>Codex</h3><p>Save <a href="/clay-mcp.py" download>clay-mcp.py</a> (it needs Python), then add this to <code>~/.codex/config.toml</code>, with the path to where you saved it:</p><pre data-for="codex"></pre><button data-copy="codex">Copy</button>'+
     '<p class="clay-agent-small">Then ask it something like “In Clay, make the cards on my home page three across”. The key in these lets an agent in, so share it like a password. <button data-rotate>Make a new key</button> shuts out anything using this one.</p>'+
@@ -153,6 +167,8 @@
   box.querySelector('[data-rotate]').addEventListener('click',async()=>{try{fill(await key('POST'));tell('New key made. Agents set up with the old one need the new one.');}catch(e){tell('Could not make a new key: '+e.message);}});
   window.addEventListener('keydown',e=>{if(box.open)e.stopImmediatePropagation();},true);
 
-  window.ClayAgent={describe,change:(list,who,say)=>change(list,who||'Test',say)};
+  // this tab can open other pages out of sight for agents, and says what they do there
+  addEventListener('clay-host',e=>{if(e.detail.text)S.say(e.detail.text);});
+  const h=document.createElement('script');h.src='/host.js';h.dataset.clayRuntime='';document.body.appendChild(h);
   listen();
 })();

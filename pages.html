@@ -124,9 +124,14 @@ label.field select{display:block;width:100%;margin-top:6px;padding:11px 12px;bor
     var stop=function(e){building=false;go.disabled=false;progress.textContent=e.message||'The site could not be exported.';};
     step(0);}
   siteForm.addEventListener('submit',function(e){if(e.submitter&&e.submitter.value==='ok'){e.preventDefault();if(!building)build();}});
+  // Agents: this list can open pages out of sight for them (host.js). It says what they do, and keeps up with the pages
+  // they make and change.
+  addEventListener('clay-host',function(e){if(e.detail.text)say(e.detail.text);load();});
+  setInterval(function(){if(document.visibilityState==='visible'&&!building&&!document.querySelector('dialog[open]'))api('GET','/api/pages').then(function(p){if(JSON.stringify(p)!==JSON.stringify(known))render(p);},function(){});},10000);
   document.querySelector('[data-site]').addEventListener('click',exportSite);
   document.querySelector('[data-new]').addEventListener('click',create);
   load();
 })();
 </script>
+<script src="host.js"></script>
 </body></html>

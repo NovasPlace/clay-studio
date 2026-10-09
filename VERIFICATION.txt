@@ -398,3 +398,46 @@ Building together with agents, 2026-10-09 (Claude)
     was refused, so canvas now fits the pieces instead (agent 18/18 with that
     check). Codex not tried: its usage limit was reached (until 2026-10-15).
   Not done: an agent can't change a page nobody has open.
+
+Agents on pages nobody has open, 2026-10-09 (Claude)
+  host.js (on the page list and in every editor tab): while the tab is
+    showing it waits at /api/host, and opens the pages agents ask for in a
+    hidden editor (/p/<name>/?agent), the same editor as yours. It says who
+    is working where and what each step was (a toast on the list, the hint
+    in an editor), and closes the hidden page after two minutes without
+    requests, after saving.
+  serve.py: an agent's request for a page nobody has open goes to a host and
+    waits up to 20s for the page to open there; with no host it's told Clay
+    isn't open anywhere, with the addresses to ask for. A hidden editor gives
+    way as soon as the person opens the page (it's told to close; requests go
+    to the person's). clay_pages "open" means open by the person. Hosts say
+    goodbye like editors.
+  agent.js: in a hidden editor, reports steps to its host and closes when
+    told. Every change is saved on the server before the agent hears back.
+    A card or button added without "like" copies the look of one already on
+    the page (its words emptied, its link reset).
+  starters/links.html: button and plain card styles, so Add + and agents'
+    buttons look right there.
+  qa/server.test.py: 75/75, adding 5 (no host: what to ask for; a host opens
+    the page and the agent is answered from there; not listed as open, and
+    further requests go there; the person opens it: the hidden one closes,
+    requests go to the person's; the last host gone: told at once).
+  Headless Waterfox (hosting): 12/12. Nothing open: told so; with only the
+    page list showing, a page is read and changed out of sight, the list
+    says who's working where and what they did, two pages at once, still
+    not listed as open, a page the agent makes appears in the list by
+    itself; opened later, the change is saved and in the history, and
+    undoes; with the page open, changes land in the person's editor; from an
+    editor tab, another page opens out of sight; both changes saved; no
+    errors. (Found and fixed: a hidden page closed straight after a change
+    lost it, so changes are now saved before the agent hears back.)
+  agent 19/19 (adds: a card and a button without "like" match the page).
+  Real Claude Code 2.1.289 with only the page list open, asked to make a
+    Family page (heading, a line, a button back to Home) and add a button
+    to it on Home: 5/5, twice (20s, 8 turns, about $0.26 each). The first
+    run showed the links starter had no button style; fixed.
+  Regression: site 18/18, pages 11/11, Sculpt 30/30, groups 8/8, Layout
+    tools and classic 13/13, storage 5/5, split 6/6, revision 9/9, motion
+    8/8, npm test 22/22.
+  Test harness (not in the repo): a browser left from an earlier run holding
+    the control port made later runs hang; the driver now refuses to start.
