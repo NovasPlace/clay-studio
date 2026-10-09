@@ -60,6 +60,29 @@
     const rectangle=Math.abs(area)<1200,box=envelope(path.map(p=>({...p,w:0,h:0})));
     if(rectangle&&(box.w<20||box.h<20))return [];
     return items.filter(i=>!i.pin&&(rectangle?i.x+i.w/2>=box.x&&i.x+i.w/2<=box.x+box.w&&i.y+i.h/2>=box.y&&i.y+i.h/2<=box.y+box.h:inPolygon({x:i.x+i.w/2,y:i.y+i.h/2},path))).map(i=>i.id);}
-  const api={clamp,copy,contain,influence,snap,crowded,separate,push,grow,smooth,pathLength,sample,flow,envelope,overlaps,nearestFree,magnet,lasso,inPolygon};
+  // Act: a piece follows the pointer on a leash, and the performance becomes a loop. Samples are offsets from home with
+  // times in milliseconds. Between two events far apart in time the piece was held still, so it stays put until just
+  // before the next one. The take is read every 20ms, then thinned to the stops that keep it within a pixel of what was
+  // played, as far as 16 stops a second allow (at least 40, at most 160). Ending near the start closes the loop, with a
+  // short way back and a start where it was let go; ending anywhere else, it swings back the way it came.
+  const ACT={reach:140,close:24,stops:40,rate:16,most:160,every:20,shortest:300};
+  function leash(p,reach=ACT.reach){const d=Math.hypot(p.x,p.y);return d>reach?{...p,x:p.x*reach/d,y:p.y*reach/d}:{...p};}
+  function take(samples,o={}){const {reach,close,stops,rate,most,every,shortest}={...ACT,...o},s=[];
+    samples.forEach(p=>{const q=leash(p,reach);if(s.length&&q.t<=s[s.length-1].t)s[s.length-1]={...q,t:s[s.length-1].t};else s.push(q);});
+    if(s.length<2||s[s.length-1].t-s[0].t<shortest)return null;const t0=s[0].t,end=s[s.length-1].t-t0;
+    let j=0;const at=t=>{while(j<s.length-2&&s[j+1].t-t0<=t)j++;const a=s[j],b=s[j+1],from=b.t-a.t>50?b.t-16-t0:a.t-t0,u=clamp((t-from)/Math.max(1,b.t-t0-from),0,1);
+      return {t,x:a.x+(b.x-a.x)*u,y:a.y+(b.y-a.y)*u};};
+    const pts=[];for(let t=0;t<end;t+=every)pts.push(at(t));pts.push({t:end,x:s[s.length-1].x,y:s[s.length-1].y});
+    const first=pts[0],last=pts[pts.length-1],away=Math.hypot(last.x-first.x,last.y-first.y),loop=away<=close;let duration=end,delay=0;
+    if(loop&&away>.5){delay=end;duration=end+clamp(away*8,40,300);pts.push({t:duration,x:first.x,y:first.y});}else if(loop){last.x=first.x;last.y=first.y;}else delay=end;
+    // Best first: the stretch that strays furthest from a straight line gets a stop where it strays most, until every
+    // stretch is within a pixel or the stops run out, so a busy take keeps as much of its shape as it can.
+    const stray=(a,b)=>{const p=pts[a],q=pts[b];let w=0,at=-1;for(let k=a+1;k<b;k++){const u=(pts[k].t-p.t)/(q.t-p.t),e=Math.hypot(pts[k].x-p.x-(q.x-p.x)*u,pts[k].y-p.y-(q.y-p.y)*u);if(e>w){w=e;at=k;}}return {a,b,w,at};};
+    const runs=[stray(0,pts.length-1)],budget=clamp(Math.round(duration/1000*rate),stops,most);
+    while(runs.length<budget-1){let i=0;runs.forEach((r,k)=>{if(r.w>runs[i].w)i=k;});const r=runs[i];if(r.w<=1)break;runs.splice(i,1,stray(r.a,r.at),stray(r.at,r.b));}
+    const out=[];[0,...runs.map(r=>r.b)].forEach(k=>{const p=pts[k],t=Math.round(p.t/duration*10000)/100;if(out.length&&out[out.length-1].t>=t)out.pop();out.push({t,x:Math.round(p.x*10)/10,y:Math.round(p.y*10)/10});});
+    out[0].t=0;out[out.length-1].t=100;
+    return {stops:out,duration:Math.round(duration)/1000,delay:Math.round(delay)/1000,loop};}
+  const api={clamp,copy,contain,influence,snap,crowded,separate,push,grow,smooth,pathLength,sample,flow,envelope,overlaps,nearestFree,magnet,lasso,inPolygon,ACT,leash,take};
   if(typeof module==='object'&&module.exports)module.exports=api;else scope.ClayGeometry=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

@@ -7,7 +7,7 @@
   const shell=document.createElement('div');shell.className='clay-shell';shell.dataset.clayUi='';
   shell.innerHTML=`<header class="clay-top"><div><button class="clay-pages" data-action="pages" hidden title="All your pages">← Pages</button><span class="clay-brand">Clay Studio<small>Sculpting lab · 0.3</small></span><span class="clay-chip">SHAPE IT BY HAND</span></div><div><button class="original-tools" data-action="original">Layout tools</button><button data-action="phone" aria-pressed="false">Phone</button><button class="site-toggle" data-action="preview" aria-pressed="false">View site</button><button class="clay-export" data-action="export">Export</button></div></header>
   <div class="clay-bottom"><div class="clay-selection" hidden><span></span><button data-tool="peel" aria-pressed="false">Peel a piece</button><button data-action="ungroup">Ungroup</button><button data-action="scatter" aria-pressed="false" title="The pieces wait apart and come together when the pointer reaches them">Scatter</button><button data-action="goo" aria-pressed="false" title="The pieces melt together where they come close">Goo</button></div><div class="clay-hint" role="status" aria-live="polite"></div><div class="clay-tools" role="toolbar" aria-label="Sculpting tools">
-  <button class="tool" data-tool="hand" aria-pressed="true">Grab</button><button class="tool" data-tool="group" aria-pressed="false">Group</button><button class="tool" data-tool="push" aria-pressed="false">Push</button><button class="tool" data-tool="grow" aria-pressed="false">Grow</button><button class="tool" data-tool="flow" aria-pressed="false">Flow</button><button class="tool" data-tool="smooth" aria-pressed="false">Tidy</button><button class="tool" data-tool="paint" aria-pressed="false">Paint</button><button class="tool" data-tool="pin" aria-pressed="false">Pin</button>
+  <button class="tool" data-tool="hand" aria-pressed="true">Grab</button><button class="tool" data-tool="group" aria-pressed="false">Group</button><button class="tool" data-tool="push" aria-pressed="false">Push</button><button class="tool" data-tool="grow" aria-pressed="false">Grow</button><button class="tool" data-tool="flow" aria-pressed="false">Flow</button><button class="tool" data-tool="smooth" aria-pressed="false">Tidy</button><button class="tool" data-tool="paint" aria-pressed="false">Paint</button><button class="tool" data-tool="act" aria-pressed="false" title="Hold a piece and move it the way it should move (A)">Act</button><button class="tool" data-tool="pin" aria-pressed="false">Pin</button>
   <span class="separator"></span><label class="clay-options">Brush <input type="range" aria-label="Brush size" min="50" max="380" value="160"><output>160</output></label><input class="clay-color" type="color" aria-label="Paint color" value="#adddc5" hidden>
   <button data-action="magnets" aria-pressed="true" title="Attach small text or a button near a card or image">Magnets</button><button data-action="room" aria-pressed="true" title="Move neighbors aside while sculpting">Make room</button><span class="separator"></span><button data-action="undo" disabled>Undo</button><button data-action="redo" disabled>Redo</button><button data-action="add" aria-expanded="false">Add +</button></div><div class="clay-status">Your edits stay in this browser. Export a page to keep a portable copy.</div>
   <div class="clay-more" hidden><button data-add="text">Add text</button><button data-add="card">Add card</button><button data-add="button">Add button</button><button data-add="image">Add image</button><button data-action="replace" hidden>Replace image</button><button data-action="split" hidden>Split drawing</button><button data-action="space">More canvas</button><button data-action="edit">Edit selected text</button><button data-action="link" hidden title="Point this button or link at another page, a part of this page, or a web address (K)">Link to…</button></div></div>
@@ -19,9 +19,9 @@
   document.body.appendChild(shell);
   const q=s=>shell.querySelector(s),qa=s=>[...shell.querySelectorAll(s)];
   const hint=q('.clay-hint'),canvas=q('canvas'),ctx=canvas.getContext('2d'),handle=q('.clay-handle'),dialog=q('dialog'),linkDialog=q('.clay-link');
-  const tips={group:'Drag a box or draw a loop around pieces to stick them together. Pinned pieces stay out.',peel:'Pull a piece 56 pixels out of its group to release it. Escape cancels.',hand:'Grab any piece. Pull its corner to resize. Double-click words to edit.',push:'Brush across the page to push pieces. Pinned pieces stay put.',grow:'Brush upward to grow. Brush downward to shrink. Text stays readable.',flow:'Draw a long path across the canvas. Unpinned cards will follow your stroke.',smooth:'Tidy gently closes oversized gaps and evens nearby rows. Your groups stay together.',paint:'Choose a color, then brush it onto pieces.',pin:'Click a piece to pin it. Click again to let it move.'};
+  const tips={group:'Drag a box or draw a loop around pieces to stick them together. Pinned pieces stay out.',peel:'Pull a piece 56 pixels out of its group to release it. Escape cancels.',hand:'Grab any piece. Pull its corner to resize. Double-click words to edit.',push:'Brush across the page to push pieces. Pinned pieces stay put.',grow:'Brush upward to grow. Brush downward to shrink. Text stays readable.',flow:'Draw a long path across the canvas. Unpinned cards will follow your stroke.',smooth:'Tidy gently closes oversized gaps and evens nearby rows. Your groups stay together.',paint:'Choose a color, then brush it onto pieces.',pin:'Click a piece to pin it. Click again to let it move.',act:'Hold a piece and move it the way it should move, then let go. It keeps moving like that, in the exported page too.'};
   let tool='hand',radius=160,makeRoom=true,magnets=true,selected=null,gesture=null,lastPoint=null,phone=false,live=false,original=false,format='html',exportHTML='',exportURL='',exportSaving=false;
-  let seenError=false,hoveringField=false,wasNarrow=false,fileFor=null,pointed=null,linking=null;
+  let seenError=false,hoveringField=false,wasNarrow=false,fileFor=null,pointed=null,linking=null,tapped=null;
   function say(text){hint.textContent=text;}
   // Idle motion pauses while pieces are measured or held, so measuring never picks up a mid-motion offset.
   const still=on=>B.still(on);
@@ -54,10 +54,10 @@
       return [{el:i.el,css}];}),label);refresh();}
   // Make room clears space for what is moving; pairs that were already crowded before the gesture are left as they were.
   function settle(list,held,crowded=gesture&&gesture.crowded){if(!makeRoom)return {items:list,unresolved:0};return G.separate(list,bounds(),held,undefined,crowded);}
-  function setTool(t){if(gesture)finish(false);tool=t;qa('[data-tool]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===t)));q('.clay-color').hidden=t!=='paint';say(tips[t]);refresh();draw();}
+  function setTool(t){if(gesture)finish(false);tool=t;tapped=null;qa('[data-tool]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===t)));q('.clay-color').hidden=t!=='paint';say(tips[t]);refresh();draw();}
   function active(){return !phone&&root.clientWidth>767&&!live&&!original&&!dialog.open&&!linkDialog.open;}
   function selectedBy(e){return e.target.closest&&R.unit(e.target.closest('[data-sculpt-item]'));}
-  function start(e,resize=false){if(!active()||e.button!==0||e.target.isContentEditable)return;let el=resize?selected:selectedBy(e);const p=point(e);lastPoint=p;const peel=(tool==='peel'||e.altKey)&&!resize;if(peel){const hit=e.target.closest('[data-sculpt-item]');if(!hit||!R.isGroup(hit.parentElement)){say('Start on a piece inside a group.');return;}el=hit;if(getComputedStyle(R.unit(el)).getPropertyValue('--clay-pin').trim()==='1'){say('Unpin this group before peeling a piece out.');return;}}
+  function start(e,resize=false){if(!active()||e.button!==0||e.target.isContentEditable)return;let el=resize?selected:selectedBy(e);const p=point(e);lastPoint=p;if(tool==='act'&&!resize){startAct(e,p);return;}const peel=(tool==='peel'||e.altKey)&&!resize;if(peel){const hit=e.target.closest('[data-sculpt-item]');if(!hit||!R.isGroup(hit.parentElement)){say('Start on a piece inside a group.');return;}el=hit;if(getComputedStyle(R.unit(el)).getPropertyValue('--clay-pin').trim()==='1'){say('Unpin this group before peeling a piece out.');return;}}
     if(tool==='pin'&&!resize){if(!el){say('Click a piece to pin it.');return;}const before=B.begin(),pin=getComputedStyle(el).getPropertyValue('--clay-pin').trim()!=='1';B.write([{el,css:{'--clay-pin':pin?'1':'0'}}],pin?'Pinned this piece.':'Unpinned this piece.');B.commit(before,pin?'Pinned a piece.':'Unpinned a piece.');select(el);say(pin?'Pinned. Brushes and neighbors will leave this piece in place.':'Unpinned. This piece can move again.');return;}
     if((tool==='hand'||resize||tool==='peel')&&!el){select(null);return;}
     if(el&&(tool==='hand'||resize)&&getComputedStyle(el).getPropertyValue('--clay-pin').trim()==='1'){select(el);say('This piece is pinned. Use Pin to release it first.');return;}
@@ -69,7 +69,7 @@
   function paint(p){const targets=gesture.now.flatMap(i=>i.kind==='group'?R.members(i.el).map(el=>({...R.rect(el),id:el.id,kind:el.dataset.kind,pin:i.pin})):[i]).filter(i=>!i.pin&&G.influence(i,p,radius)>.25&&!gesture.painted.has(i.id));const color=q('.clay-color').value;
     if(targets.length){B.write(targets.map(i=>({el:i.el,css:{[i.kind==='text'?'color':'background-color']:color,'background-image':'none'}})),'You painted this piece '+color+'.');targets.forEach(i=>gesture.painted.add(i.id));gesture.moved=true;}}
   function move(e){const at=point(e),b0=bounds();hoveringField=at.x>=0&&at.y>=0&&at.x<=b0.w&&at.y<=b0.h;if(hoveringField||gesture)lastPoint=at;if(!gesture){draw();return;}if(e.pointerId!==gesture.id)return;e.preventDefault();const d=gesture,p=lastPoint,dx=p.x-d.start.x,dy=p.y-d.start.y,b=bounds();
-    if(!d.moved&&Math.hypot(dx,dy)<3&&tool!=='paint')return;d.moved=true;let next=d.now,label='',held=null;
+    if(!d.moved&&Math.hypot(dx,dy)<3&&tool!=='paint')return;d.moved=true;if(d.act){acting(d,e);return;}let next=d.now,label='',held=null;
     if(tool==='group'){d.path.push(p);d.groupIds=G.lasso(d.all,d.path);d.prev=p;say(d.groupIds.length+' pieces inside. Release to group them.');draw();return;}
     if(d.peel&&!d.peeled){if(Math.hypot(dx,dy)<56){say('Pull a little farther to peel this piece out.');draw();return;}R.peel(d.el);d.peeled=true;d.all=model();d.now=d.all;select(d.el);}
     if(d.resize){const i=d.all.find(i=>i.el===d.el),w=G.clamp(i.w+dx,i.minW,b.w-i.x),h=G.clamp(i.h+dy,i.minH,b.h-i.y);next=d.all.map(o=>o.id===i.id?{...o,w,h,font:G.clamp(i.font*w/i.w,i.minFont,120)}:{...o});held=i.id;label='You resized a piece by hand.';}
@@ -85,7 +85,7 @@
       if(d.resize||tool==='grow'){const measured=model();d.now=measured;const adjusted=settle(measured,held);d.now=adjusted.items;d.lastOutcome=adjusted.unresolved;apply(d.now,label,false,d.all,d.seen);}}
     d.label=label;d.prev=p;say(d.magnet?'Attach '+d.magnet.side+' on release. Hold Shift for free placement.':d.peel?'Released from the group. Keep dragging; Undo brings it back.':d.lastOutcome?'Some pieces touch. Move farther, use a smaller brush, or switch Make room off.':tool==='flow'?'The cards follow your line. Release to keep this arrangement.':tips[tool]);draw();
   }
-  function finish(keep){if(!gesture)return;const d=gesture;gesture=null;still(false);try{field.releasePointerCapture(d.id);}catch(err){}
+  function finish(keep){if(!gesture)return;const d=gesture;gesture=null;still(false);try{field.releasePointerCapture(d.id);}catch(err){}if(d.act){endAct(d,keep);return;}
     if(keep&&d.peel&&!d.peeled){select(R.unit(d.el));say('Still attached. Pull farther to peel, or use Ungroup.');draw();return;}
     if(keep&&tool==='group'){const chosen=d.all.filter(i=>(d.groupIds||[]).includes(i.id)).map(i=>i.el);if(chosen.length>=2){const g=R.wrap(chosen);B.commit(d.before,'You looped '+chosen.length+' pieces into a sticky group.');select(g);setTool('hand');say('Stuck together. Grab any member, stretch the corner, or choose Peel a piece.');}else say('Include the centers of at least two unpinned pieces.');refresh();draw();return;}
     if(keep&&d.magnet&&d.moved){const target=items().find(e=>e.id===d.magnet.target);if(target){const g=R.wrap([target,d.el],'magnet');B.commit(d.before,'You attached a piece with magnetism.');select(g);say('Attached. Move them together, or use Peel a piece to pull one free.');refresh();draw();return;}}
@@ -94,12 +94,46 @@
     if(keep&&d.peeled){setTool('hand');say('Piece peeled free. Grab to move it; Undo reattaches it.');}
     refresh();draw();
   }
+  // ---- Act: hold a piece and move it the way it should move; let go and it keeps moving exactly like that ----
+  // Nothing else stops while you act, so takes layer like a loop pedal. A part of a split drawing acts on its own, and a
+  // piece of any other group acts with its group; Alt reaches the other way. A piece picked up mid-motion starts there.
+  function actor(e){const hit=e.target.closest&&e.target.closest('[data-sculpt-item]');if(!hit||!field.contains(hit))return null;const g=hit.parentElement;
+    return R.isGroup(g)&&(g.dataset.bond==='drawing')!==e.altKey?hit:R.unit(hit);}
+  const actName=el=>R.isGroup(el)?el.dataset.bond==='drawing'?'the drawing':'the group':'“'+pieceName(el)+'”';
+  const moves=el=>getComputedStyle(el).animationName!=='none';
+  function hold(el,at){el.style.setProperty('translate',at.x+'px '+at.y+'px','important');el.style.setProperty('rotate','none','important');el.style.setProperty('scale','none','important');}
+  // Times come from the pointer events, including every position the browser gathered in between, so a busy moment
+  // isn't mistaken for a pause.
+  const when=e=>Math.abs(e.timeStamp-performance.now())<5000?e.timeStamp:performance.now();
+  function startAct(e,p){if(gesture)finish(false);const el=actor(e);if(!el){select(null);say(tips.act);return;}
+    e.preventDefault();e.stopPropagation();q('.clay-more').hidden=true;q('[data-action=add]').setAttribute('aria-expanded','false');B.stopMotion();
+    const cs=getComputedStyle(el),from={x:parseFloat(cs.getPropertyValue('--clay-dx'))||0,y:parseFloat(cs.getPropertyValue('--clay-dy'))||0},r=el.getBoundingClientRect(),up=el.parentElement,u=up.getBoundingClientRect();
+    gesture={id:e.pointerId,act:true,el,up,start:p,from,at:from,far:false,most:0,t0:when(e),samples:[{t:0,...from}],before:B.begin(),moved:false,guides:[],home:{x:r.left-u.left+r.width/2-from.x,y:r.top-u.top+r.height/2-from.y}};
+    hold(el,from);select(R.unit(el));try{field.setPointerCapture(e.pointerId);}catch(err){}say('Acting. Move it the way it should move, and pause if you like. Esc cancels.');draw();}
+  function acting(d,e){const all=e.getCoalescedEvents&&e.getCoalescedEvents();
+    (all&&all.length?all:[e]).forEach(c=>{const p=point(c);d.at=G.leash({x:d.from.x+p.x-d.start.x,y:d.from.y+p.y-d.start.y});d.samples.push({t:when(c)-d.t0,...d.at});});
+    hold(d.el,d.at);const away=Math.hypot(d.at.x-d.from.x,d.at.y-d.from.y);d.most=Math.max(d.most,away);d.far=d.far||away>G.ACT.close*2;
+    say(d.far&&away<=G.ACT.close?'Let go here and it loops.':'Let go in the green ring to loop it, anywhere else to swing back. Esc cancels.');draw();}
+  // A press that hardly moves is a click. It remembers its piece for a moment, for a double-click: a moving piece can
+  // slip away between the two clicks, and pointer capture sends the double-click to the canvas.
+  function endAct(d,keep){const el=d.el,tap=!d.moved||d.most<6;['translate','rotate','scale'].forEach(k=>el.style.removeProperty(k));tapped=keep&&tap?{el,at:performance.now()}:null;
+    const t=keep&&!tap&&G.take(d.samples.concat({t:performance.now()-d.t0,...d.at}));
+    if(t){const label='You acted out how '+actName(el)+' moves.',css=B.takeCSS(t);B.write([{el,css}],label);B.commit(d.before,label);
+      const plays=getComputedStyle(el).animationName.split(/,\s*/).includes(css.animation.split(' ')[0]);
+      say(!plays?'Kept, but here a motion set in Layout tools, for this screen size or a state, takes its place.':matchMedia('(prefers-reduced-motion: reduce)').matches?'Kept. This computer asks for less motion, so it stays still here; visitors who allow motion see it move.':t.loop?'Kept. It loops the way you acted it, pauses and all. Act on another piece to layer it; Undo takes it back.':'Kept. It moves the way you acted it, and swings back. End where you started to make a loop.');}
+    else say(!keep?'Cancelled. It moves the way it did before.':!tap?'Too quick to keep. Act it out a little longer.':moves(el)?'It moves the way it was acted. Hold it and move it to act it again, or double-click to still it.':tips.act);
+    refresh();draw();}
   function draw(){const ratio=Math.min(devicePixelRatio||1,2);if(canvas.width!==Math.round(innerWidth*ratio)||canvas.height!==Math.round(innerHeight*ratio)){canvas.width=Math.round(innerWidth*ratio);canvas.height=Math.round(innerHeight*ratio);canvas.style.width=innerWidth+'px';canvas.style.height=innerHeight+'px';}ctx.setTransform(ratio,0,0,ratio,0,0);ctx.clearRect(0,0,innerWidth,innerHeight);if(!active())return;const r=field.getBoundingClientRect();
     if(lastPoint&&(hoveringField||gesture)&&['push','grow','smooth','paint'].includes(tool)){ctx.beginPath();ctx.arc(r.left+lastPoint.x,r.top+lastPoint.y,radius,0,Math.PI*2);ctx.fillStyle='#16836509';ctx.fill();ctx.strokeStyle='#16836588';ctx.lineWidth=1.5;ctx.setLineDash([5,6]);ctx.stroke();ctx.setLineDash([]);ctx.beginPath();ctx.arc(r.left+lastPoint.x,r.top+lastPoint.y,3,0,Math.PI*2);ctx.fillStyle='#168365';ctx.fill();}
     if(selected&&R.isGroup(selected)){const b=selected.getBoundingClientRect();ctx.setLineDash([5,5]);ctx.strokeStyle='#168365';ctx.lineWidth=1.5;ctx.strokeRect(b.x-8,b.y-8,b.width+16,b.height+16);ctx.setLineDash([]);}
     if(gesture&&tool==='group'){const path=gesture.path,box=G.envelope(path.map(p=>({...p,w:0,h:0})));ctx.fillStyle='#16836514';ctx.strokeStyle='#168365';ctx.setLineDash([6,4]);ctx.fillRect(r.left+box.x,r.top+box.y,box.w,box.h);ctx.strokeRect(r.left+box.x,r.top+box.y,box.w,box.h);ctx.setLineDash([]);ctx.beginPath();path.forEach((p,i)=>ctx[i?'lineTo':'moveTo'](p.x+r.left,p.y+r.top));ctx.stroke();gesture.all.filter(i=>(gesture.groupIds||[]).includes(i.id)).forEach(i=>ctx.strokeRect(r.left+i.x-5,r.top+i.y-5,i.w+10,i.h+10));}
     if(gesture&&gesture.magnet){const target=gesture.now.find(i=>i.id===gesture.magnet.target);if(target){ctx.fillStyle='#e2b33a20';ctx.strokeStyle='#b18528';ctx.lineWidth=3;ctx.fillRect(r.left+target.x-6,r.top+target.y-6,target.w+12,target.h+12);ctx.strokeRect(r.left+target.x-6,r.top+target.y-6,target.w+12,target.h+12);}}
     if(gesture&&gesture.peel&&!gesture.peeled){ctx.strokeStyle='#b18528';ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(r.left+gesture.start.x,r.top+gesture.start.y);ctx.lineTo(r.left+lastPoint.x,r.top+lastPoint.y);ctx.stroke();ctx.setLineDash([]);}
+    // the rings ride along with a group that is itself moving, so they stay where the piece's own motion is measured
+    if(gesture&&gesture.act){const d=gesture,u=d.up.getBoundingClientRect(),hx=u.left+d.home.x,hy=u.top+d.home.y,back=d.far&&Math.hypot(d.at.x-d.from.x,d.at.y-d.from.y)<=G.ACT.close;
+      ctx.beginPath();ctx.arc(hx,hy,G.ACT.reach,0,Math.PI*2);ctx.strokeStyle='#6756d455';ctx.lineWidth=1.5;ctx.setLineDash([5,6]);ctx.stroke();ctx.setLineDash([]);
+      ctx.beginPath();ctx.arc(hx+d.from.x,hy+d.from.y,G.ACT.close,0,Math.PI*2);ctx.fillStyle=back?'#16836566':'#ffffff26';ctx.fill();ctx.strokeStyle='#ffffffcc';ctx.lineWidth=4;ctx.stroke();ctx.strokeStyle='#168365';ctx.lineWidth=2;ctx.stroke();
+      ctx.beginPath();d.samples.forEach((s,i)=>ctx[i?'lineTo':'moveTo'](hx+s.x,hy+s.y));ctx.strokeStyle='#6756d4';ctx.lineWidth=2;ctx.lineCap='round';ctx.stroke();}
     if(gesture&&tool==='flow'){ctx.beginPath();gesture.path.forEach((p,i)=>ctx[i?'lineTo':'moveTo'](p.x+r.left,p.y+r.top));ctx.strokeStyle=gesture.flowValid?'#168365':'#b18528';ctx.lineWidth=3;ctx.lineCap='round';ctx.stroke();}
     if(gesture)gesture.guides.forEach(g=>{ctx.beginPath();ctx.setLineDash([4,4]);if(g.axis==='x'){ctx.moveTo(r.left+g.at,r.top);ctx.lineTo(r.left+g.at,r.bottom);}else{ctx.moveTo(r.left,r.top+g.at);ctx.lineTo(r.right,r.top+g.at);}ctx.strokeStyle='#6756d4aa';ctx.lineWidth=1;ctx.stroke();ctx.setLineDash([]);});}
   function textEditor(el){if(R.isGroup(el)){say('Double-click the words inside the group to edit them.');return;}if(!el){say('Grab a text piece first, or double-click its words.');return;}let target=el;if(el.dataset.kind==='card')target=el.querySelector('h2,p')||el;if(el.tagName==='IMG'){say('Image added. Its filename is used as alternative text.');return;}
@@ -139,7 +173,8 @@
       return r.width||r.height?{x:vb.x+(r.left-pr.left)*k-pad,y:vb.y+(r.top-pr.top)*k-pad,w:r.width*k+pad*2,h:r.height*k+pad*2}:null;});
     hold.remove();
     // where the picture's drawing actually sits on the canvas, honouring object-fit
-    const at=R.rect(img),fit=getComputedStyle(img).objectFit;let sx=at.w/vb.w,sy=at.h/vb.h,ox=0,oy=0;
+    // measured where it rests: a moving picture is held still for it
+    still(true);let at,fit;try{at=R.rect(img);fit=getComputedStyle(img).objectFit;}finally{still(false);}let sx=at.w/vb.w,sy=at.h/vb.h,ox=0,oy=0;
     if(fit==='contain'||fit==='scale-down'||fit==='cover'){const s=fit==='cover'?Math.max(sx,sy):Math.min(sx,sy);ox=(at.w-vb.w*s)/2;oy=(at.h-vb.h*s)/2;sx=sy=s;}
     const shared=[...svg.children].filter(e=>SHARED.test(e.localName)).map(e=>new XMLSerializer().serializeToString(e)).join(''),
       rootAttrs=[...svg.attributes].filter(a=>!KEEP.test(a.name)).map(a=>' '+a.name+'="'+a.value.replace(/&/g,'&amp;').replace(/"/g,'&quot;')+'"').join('');
@@ -151,8 +186,9 @@
       el.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(src);img.before(el);B.register(el,'image');made.push(el);
       const x=at.x+ox+(bx.x-vb.x)*sx,y=at.y+oy+(bx.y-vb.y)*sy;
       B.write([{el,css:{position:'absolute',left:(x/b.w*100).toFixed(4)+'%',top:y.toFixed(2)+'px',width:(bx.w*sx/b.w*100).toFixed(4)+'%',height:(bx.h*sy).toFixed(2)+'px'}},mobileRules(el)]);});
-    B.retain(img);img.remove();
-    const g=made.length>1?R.wrap(made,'drawing'):made[0];B.commit(before,'You split a drawing into '+made.length+' pieces.');
+    const was=B.rule(img);B.retain(img);img.remove();
+    // the drawing keeps moving the way the picture did
+    const g=made.length>1?R.wrap(made,'drawing'):made[0];if(was.animation)B.write([{el:g,css:{animation:was.animation,'--clay-take':was['--clay-take']||null}}]);B.commit(before,'You split a drawing into '+made.length+' pieces.');
     select(g);setTool('peel');say('Split into '+made.length+' pieces, held together as one drawing. Pull any piece out; Grab moves the whole drawing.');refresh();draw();
   }
   // Big photos are scaled down first, the same way Replace image does, so the page still fits in browser storage.
@@ -219,7 +255,9 @@
   qa('[data-tool]').forEach(b=>b.onclick=()=>setTool(b.dataset.tool));qa('[data-action]').forEach(b=>b.onclick=()=>action(b.dataset.action));qa('[data-add]').forEach(b=>b.onclick=()=>b.dataset.add==='image'?(fileFor=null,q('.clay-file').click()):add(b.dataset.add));qa('[data-format]').forEach(b=>b.onclick=()=>showFormat(b.dataset.format));
   q('input[type=range]').oninput=e=>{radius=+e.target.value;q('output').textContent=radius;draw();};q('.clay-file').onchange=e=>{const f=e.target.files[0],img=fileFor;fileFor=null;e.target.value='';if(img&&img.isConnected)replaceImage(img,f);else readImage(f);};
   field.addEventListener('pointerdown',e=>{pointed=e.target.closest&&e.target.closest('a');start(e);});handle.addEventListener('pointerdown',e=>start(e,true));window.addEventListener('pointermove',e=>{if(active())move(e);});window.addEventListener('pointerup',e=>{if(gesture&&e.pointerId===gesture.id)finish(true);});window.addEventListener('pointercancel',()=>finish(false));window.addEventListener('blur',()=>{if(gesture)finish(false);});
-  field.addEventListener('dblclick',e=>{if(active()&&tool==='hand'){const hit=document.elementFromPoint(e.clientX,e.clientY),piece=hit&&hit.closest('[data-sculpt-item]');if(piece&&field.contains(piece)){e.preventDefault();let t=hit.closest('h1,h2,h3,p,a,button');textEditor(t&&piece.contains(t)?t:piece);}}});
+  field.addEventListener('dblclick',e=>{if(active()&&tool==='hand'){const hit=document.elementFromPoint(e.clientX,e.clientY),piece=hit&&hit.closest('[data-sculpt-item]');if(piece&&field.contains(piece)){e.preventDefault();let t=hit.closest('h1,h2,h3,p,a,button');textEditor(t&&piece.contains(t)?t:piece);}}
+    else if(active()&&tool==='act'){const t=tapped,el=t&&performance.now()-t.at<600&&t.el;tapped=null;if(!el||!el.isConnected||!moves(el))return;e.preventDefault();
+      if(!B.rule(el).animation){say('Its motion is set in Layout tools, for a screen size or a state. Still it there.');return;}const before=B.begin(),label='You stilled '+actName(el)+'.';B.write([{el,css:{animation:null,'--clay-take':null}}],label);B.commit(before,label);refresh();say('Still. Act it out again whenever you like; Undo brings the motion back.');}});
   field.addEventListener('click',e=>{if(active()){e.preventDefault();e.stopPropagation();}});
   // In View site, a link to another of your pages saves this one first, and the next page opens in View site too.
   field.addEventListener('click',e=>{const a=live&&e.target.closest&&e.target.closest('a[href^="../"]');if(!a||e.defaultPrevented||e.button||e.ctrlKey||e.metaKey||e.shiftKey)return;e.preventDefault();
@@ -230,7 +268,7 @@
     if(!active()||e.ctrlKey||e.metaKey||e.altKey)return;if(e.key==='Delete'&&selected){e.preventDefault();B.remove(selected);select(null);say('Removed. Undo brings it back.');return;}
     if(selected&&/^Arrow/.test(e.key)){e.preventDefault();const before=B.begin(),all=model(),start=all.map(o=>({...o})),i=all.find(i=>i.el===selected);if(i.pin){say('Unpin this piece before moving it.');return;}const n=e.shiftKey?10:2;i.x+=(e.key==='ArrowRight'?n:e.key==='ArrowLeft'?-n:0);i.y+=(e.key==='ArrowDown'?n:e.key==='ArrowUp'?-n:0);G.contain(i,bounds());const moved=settle(all,i.id,G.crowded(start)).items;apply(moved,'You nudged a piece with the keyboard.',false,start);B.commit(before,'Nudged a piece.');refresh();return;}
     if(e.key.toLowerCase()==='k'&&selected){e.preventDefault();action('link');return;}
-    const keys={b:'group',g:'hand',u:'push',s:'smooth',f:'flow',p:'paint',n:'pin',r:'grow'};if(keys[e.key.toLowerCase()])setTool(keys[e.key.toLowerCase()]);});
+    const keys={b:'group',g:'hand',u:'push',s:'smooth',f:'flow',p:'paint',n:'pin',r:'grow',a:'act'};if(keys[e.key.toLowerCase()])setTool(keys[e.key.toLowerCase()]);});
   window.addEventListener('resize',()=>{refresh();draw();});window.addEventListener('scroll',()=>{refresh();draw();},{passive:true});
   // On a Clay server, work is saved there and the page list is one click away; otherwise it stays in this browser.
   const SAVED={saving:'Saving to the server…',saved:'Saved on the server. Open this page from any computer on your network.',offline:'Can’t reach the server. Your changes are safe in this tab; it keeps trying.',stale:'This page was changed somewhere else. Reload to see the latest; changes made here since then were not saved.'};

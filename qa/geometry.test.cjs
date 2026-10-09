@@ -57,4 +57,37 @@ test('repeated growth remains finite, bounded and pin-safe',()=>{
   for(const i of out){assert.ok(i.x>=0&&i.y>=0&&i.x+i.w<=bounds.w&&i.y+i.h<=bounds.h);assert.ok(i.font>=10&&i.font<=120);}
   assert.deepEqual(out[1],pin);
 });
+// Act: where a take puts the piece at a moment, read back from its stops the way linear keyframes play them.
+const play=(t,ms)=>{const pct=ms/(t.duration*1000)*100,s=t.stops;let i=0;while(i<s.length-2&&s[i+1].t<=pct)i++;const a=s[i],b=s[i+1],u=Math.max(0,Math.min(1,(pct-a.t)/(b.t-a.t)));return {x:a.x+(b.x-a.x)*u,y:a.y+(b.y-a.y)*u};};
+const perform=(...legs)=>{const out=[{t:0,x:0,y:0}];let t=0,x=0,y=0;legs.forEach(([ms,tx,ty,still])=>{if(still){t+=ms;return;}const n=Math.max(1,Math.round(ms/16));for(let k=1;k<=n;k++)out.push({t:t+ms*k/n,x:x+(tx-x)*k/n,y:y+(ty-y)*k/n});t+=ms;x=tx;y=ty;});out.push({t,x,y});return out;};
+test('a take ending where it started loops, keeps its pause and starts where it was let go',()=>{
+  const t=G.take(perform([600,-120,0],[500,0,0,true],[100,-80,-30],[600,6,4]));
+  assert.equal(t.loop,true);assert.equal(t.delay,1.8);assert.ok(t.duration>1.8&&t.duration<=2.1);
+  assert.deepEqual(t.stops[t.stops.length-1],{t:100,x:0,y:0});assert.deepEqual(t.stops[0],{t:0,x:0,y:0});
+  for(const ms of [620,800,1000,1080]){const p=play(t,ms);assert.ok(Math.abs(p.x+120)<2&&Math.abs(p.y)<2,'still at '+ms+'ms: '+JSON.stringify(p));}
+  const back=play(t,1800);assert.ok(Math.abs(back.x-6)<2&&Math.abs(back.y-4)<2);
+});
+test('a take ending away from its start swings back from where it was let go',()=>{
+  const t=G.take(perform([800,120,-20]));
+  assert.equal(t.loop,false);assert.equal(t.delay,t.duration);assert.deepEqual(t.stops[t.stops.length-1],{t:100,x:120,y:-20});
+});
+test('a take stays on a 140px leash, and too short a take is not kept',()=>{
+  const t=G.take(perform([500,300,0],[500,0,-400]));
+  for(const s of t.stops)assert.ok(Math.hypot(s.x,s.y)<=140.1,JSON.stringify(s));
+  assert.ok(t.stops.some(s=>Math.abs(s.x-140)<.2));assert.equal(G.take(perform([200,80,0])),null);assert.equal(G.take([{t:0,x:0,y:0}]),null);
+  assert.deepEqual(G.leash({t:5,x:3,y:4}),{t:5,x:3,y:4});assert.deepEqual(G.leash({x:0,y:-280}),{x:0,y:-140});
+});
+test('a busy take keeps its shape within its stops: 16 a second, at least 40, at most 160',()=>{
+  const off=(t,src)=>{let worst=0,sum=0,n=0;for(let ms=0;ms<=src[src.length-1].t;ms+=25){const want=src.reduce((b,s)=>Math.abs(s.t-ms)<Math.abs(b.t-ms)?s:b),got=play(t,ms),e=Math.hypot(got.x-want.x,got.y-want.y);worst=Math.max(worst,e);sum+=e;n++;}return {worst,mean:sum/n};};
+  const wiggle=[{t:0,x:0,y:0}];for(let ms=16;ms<=10000;ms+=16)wiggle.push({t:ms,x:100*Math.sin(ms/400*2*Math.PI),y:30*Math.sin(ms/1300*2*Math.PI)});
+  const t=G.take(wiggle);assert.ok(t.stops.length<=160,t.stops.length+' stops');for(let i=1;i<t.stops.length;i++)assert.ok(t.stops[i].t>t.stops[i-1].t);
+  const w=off(t,wiggle);assert.ok(w.worst<20&&w.mean<8,'wiggle off by '+JSON.stringify(w));
+  const shake=[{t:0,x:0,y:0}];for(let ms=16;ms<=4000;ms+=16)shake.push({t:ms,x:40*Math.sin(ms/200*2*Math.PI),y:0});
+  const k=G.take(shake),xs=k.stops.map(s=>s.x);assert.ok(k.stops.length>40&&k.stops.length<=64,k.stops.length+' stops');
+  const o=off(k,shake);assert.ok(Math.max(...xs)-Math.min(...xs)>70&&o.worst<25&&o.mean<9,'shake off by '+JSON.stringify(o));
+  const glide=perform([400,30,0],[1600,0,0,true]);assert.deepEqual(G.take(glide).stops.map(s=>[s.t,s.x]),[[0,0],[20,30],[100,30]]);
+  const circle=[{t:0,x:0,y:0}];for(let ms=16;ms<=2000;ms+=16)circle.push({t:ms,x:60*Math.sin(ms/2000*2*Math.PI),y:60-60*Math.cos(ms/2000*2*Math.PI)});
+  const c=G.take(circle);assert.equal(c.loop,true);assert.ok(c.stops.length<=40);
+  for(let ms=0;ms<=2000;ms+=50){const want=circle.reduce((b,s)=>Math.abs(s.t-ms)<Math.abs(b.t-ms)?s:b),got=play(c,ms);assert.ok(Math.hypot(got.x-want.x,got.y-want.y)<3,ms+'ms off by '+Math.hypot(got.x-want.x,got.y-want.y).toFixed(2));}
+});
 console.log(passed+' geometry checks passed');

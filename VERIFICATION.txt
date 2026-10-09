@@ -457,3 +457,72 @@ The progress site, made in Clay, 2026-10-09 (Claude)
   serve.py: page times in milliseconds, so pages made in the same second
     still have an oldest one (the home page Export site suggests).
   qa/server.test.py: 75/75, three runs in a row.
+
+Act it out, 2026-10-09 (Claude)
+  sculpt.js: Act (A, or the Act button). Hold a piece and move it the way it
+    should move; let go and it keeps doing exactly that, pauses and all, in
+    the exported page too. It follows the pointer within 140px of home (a
+    dashed ring), the path is drawn as you go, and a green ring marks where
+    a loop closes: let go in it and it loops, anywhere else and it swings
+    back and forth. Nothing else stops while you act, so takes layer like a
+    loop pedal; each take is one undo step ("You acted out how “Hermit crab”
+    moves."). A part of a split drawing acts on its own and a piece of any
+    other group with its group; Alt the other way. A piece picked up while
+    moving starts from where it is. Esc cancels; a press that moves under
+    6px is a click; double-click with Act stills a piece.
+  sculpt-core.js: take() reads the performance every 20ms from the pointer's
+    own times (and the positions gathered between events), holding still
+    across gaps, then keeps stops best-first until it is within a pixel of
+    what was played, up to 16 a second (at least 40, at most 160). A loop
+    gets a short way home and starts where it was let go; a swing starts at
+    the release point.
+  studio.js: a take is kept with the piece as numbers and becomes its own
+    @keyframes, in the editor and the export, inside the reduced-motion
+    guard. The moving values are now registered whenever any motion is used
+    (before, only preset motion registered them, so takes alone would have
+    jumped instead of gliding). The For an agent text now includes the
+    motion keyframes. Idle > Still and the Ctrl+K motion command clear a
+    take.
+  Found in review (three lenses, each finding checked by a skeptic: 12
+    confirmed, 11 fixed): a fast shake thinned to two stops and stood still
+    (now best-first, with a budget per second); splitting a moving picture
+    measured it mid-motion and dropped its motion, and merging a moving
+    group dropped the group's (both now keep it, and split measures at
+    rest); a stale click let a later double-click still the wrong piece; a
+    wobbly click became a take; a second pointer left a piece held; motion
+    set for one screen size made "Kept" untrue there (now says so); the
+    rings didn't ride along with a moving group; Still in Layout tools left
+    an empty rule in the CSS; a piece's own words could end a CSS comment or
+    the <style> in an exported page (pre-existing; now quoted safely).
+    Not fixed: a goo group's filter region (25% around the group) can clip a
+    member acted far outside it. Not browser-checked.
+  qa/geometry.test.cjs: 13/13, adding 5 for take() (a loop keeps its pause
+    and starts where it was let go, a swing, the leash, too short, a busy
+    take keeps its shape within its stop budget, a straight glide needs
+    three stops). npm test 26/26.
+  Headless Waterfox, real timed pointer and keyboard input on Low Tide Club:
+    act 26/26: A picks Act; the crab's walk (left 120px, a 0.5s pause, a hop,
+    back) is one labelled step, only the crab moves, not its drawing; at
+    most the stop budget; the editor sheet registers the values and plays
+    keyframes; it walks about 120px, holds still 0.5s where it paused,
+    glides (62 in-between positions), and one loop later is within 0.4px of
+    itself; an unrelated edit doesn't restart it; the crab keeps walking
+    while the sea star is acted; a swing; Ctrl+Z takes back only the star,
+    again stills the crab, Ctrl+Shift+Z brings it back; Esc leaves nothing;
+    reload keeps it; the export has no script, the keyframes in the reduced
+    motion guard and no raw stops, and plays; at 390px it walks without
+    sideways scroll; double-click stills it, Undo brings it back; no errors.
+    act2 10/10: a fast shake keeps 40 stops, its width and 12 turns; a
+    wobbly click keeps nothing; a double-click on empty canvas after an old
+    tap stills nothing; a moving picture splits with its parts exactly in
+    place (0px) and the drawing keeps moving; grouping that drawing with a
+    card keeps the motion, in the export too; a label with */ and </style>
+    can't break the exported CSS; Idle > Still clears the take with no empty
+    rule left.
+    Reduced motion 4/4: the take is kept, the editor says why it stays
+    still, and the editor and the exported page keep it still.
+  Regression: site 18/18, pages 11/11, Sculpt 30/30, groups 8/8, Layout
+    tools and classic 13/13, storage 5/5, split 6/6, revision 9/9, motion
+    8/8, agent 20/20, hosting 12/12, server 75/75.
+  Not yet: takes play at full size on phones (no smaller motion there), and
+    several takes don't keep in time with each other.

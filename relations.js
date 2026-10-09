@@ -22,10 +22,11 @@
       g.id='bundle-'+crypto.randomUUID().slice(0,8);g.className='piece clay-group group';g.dataset.sculptItem='';g.dataset.kind='group';g.dataset.bond=flavor;
       units.sort((a,b)=>a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING?-1:1);
       field.insertBefore(g,units[0]);B.register(g,'group');
-      // Preserve each existing unit's member order when merging relationships.
+      // Preserve each existing unit's member order when merging relationships. A merged group that moved, moves the new one.
+      const moved=units.filter(isGroup).map(B.rule).find(r=>r.animation);
       boxes.forEach(r=>{remember(r.el);g.appendChild(r.el);});
       units.filter(isGroup).forEach(e=>{remember(e);e.remove();});
-      B.write([boxRule(g,box),mobile(g,true),...boxes.flatMap(r=>[childRule(r,box),mobile(r.el,false,r.w)]),...keepShape(g,box,boxes)],flavor==='magnet'?'These pieces are attached and move together.':flavor==='drawing'?'These pieces are one drawing, split into parts.':'These pieces form a sticky group.');
+      B.write([boxRule(g,box),mobile(g,true),...boxes.flatMap(r=>[childRule(r,box),mobile(r.el,false,r.w)]),...keepShape(g,box,boxes),...(moved?[{el:g,css:{animation:moved.animation,'--clay-take':moved['--clay-take']||null}}]:[])],flavor==='magnet'?'These pieces are attached and move together.':flavor==='drawing'?'These pieces are one drawing, split into parts.':'These pieces form a sticky group.');
       return g;
     }
     function releaseRule(r){return {el:r.el,css:{position:'absolute',left:r.x/field.clientWidth*100+'%',top:r.y+'px',width:r.w/field.clientWidth*100+'%',height:r.el.tagName==='IMG'?r.h+'px':'auto','min-height':r.el.dataset.kind==='card'?r.h+'px':'0'}};}
