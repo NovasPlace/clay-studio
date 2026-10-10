@@ -23,10 +23,10 @@
       units.sort((a,b)=>a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING?-1:1);
       field.insertBefore(g,units[0]);B.register(g,'group');
       // Preserve each existing unit's member order when merging relationships. A merged group that moved, moves the new one.
-      const moved=units.filter(isGroup).map(B.rule).find(r=>r.animation);
+      const moved=units.filter(isGroup).map(B.rule).find(r=>r.animation),flung=units.filter(isGroup).find(e=>recOf(e)==='view'),was=flung&&{r:B.rule(flung)['--clay-arrive'].split(' '),w:flung.offsetWidth,h:flung.offsetHeight};
       boxes.forEach(r=>{remember(r.el);g.appendChild(r.el);});
       units.filter(isGroup).forEach(e=>{remember(e);e.remove();});
-      B.write([boxRule(g,box),mobile(g,true),...boxes.flatMap(r=>[childRule(r,box),mobile(r.el,false,r.w)]),...keepShape(g,box,boxes),...(moved?[{el:g,css:{animation:moved.animation,'--clay-take':moved['--clay-take']||null}}]:[])],flavor==='magnet'?'These pieces are attached and move together.':flavor==='drawing'?'These pieces are one drawing, split into parts.':'These pieces form a sticky group.');
+      B.write([boxRule(g,box),mobile(g,true),...boxes.flatMap(r=>[childRule(r,box),mobile(r.el,false,r.w)]),...keepShape(g,box,boxes),...(moved?[{el:g,css:{animation:moved.animation,'--clay-take':moved['--clay-take']||null}}]:[]),...(was?[{el:g,css:B.arrive(was.r[0]*was.w/box.w,was.r[1]*was.h/box.h,was.r[2])}]:[])],flavor==='magnet'?'These pieces are attached and move together.':flavor==='drawing'?'These pieces are one drawing, split into parts.':'These pieces form a sticky group.');
       return g;
     }
     function releaseRule(r){return {el:r.el,css:{position:'absolute',left:r.x/field.clientWidth*100+'%',top:r.y+'px',width:r.w/field.clientWidth*100+'%',height:r.el.tagName==='IMG'?r.h+'px':'auto','min-height':r.el.dataset.kind==='card'?r.h+'px':'0'}};}
@@ -48,7 +48,10 @@
     // its backdrop and stays. The same group always scatters the same way.
     function seeded(s){let h=2166136261;for(const c of s)h=Math.imul(h^c.charCodeAt(0),16777619);return ()=>{h=Math.imul(h^h>>>15,2246822507)^Math.imul(h^h>>>13,3266489909);return ((h^=h>>>16)>>>0)/4294967296;};}
     function scattered(g){return isGroup(g)&&members(g).some(e=>getComputedStyle(e).getPropertyValue('--clay-scatter').trim());}
-    function arriving(g){return isGroup(g)&&members(g).some(e=>B.rule(e)['--clay-arrive']);}
+    // a member's group arrival is the group's (only Assemble writes those; a copy's still names the original group, and
+    // follows its own copy); a piece thrown on its own (Throw, "view") is its own, and isn't the group's to gather
+    const gidOf=g=>(g.id||'group').replace(/[^a-z0-9-]/gi,''),recOf=e=>String(B.rule(e)['--clay-arrive']||'').split(' ')[5],ours=(g,e)=>{const k=recOf(e);return !!k&&k!=='view';};
+    function arriving(g){return isGroup(g)&&members(g).some(e=>ours(g,e));}
     function throws(g){const box=rect(g),W=field.clientWidth,H=field.clientHeight,c={x:box.x+box.w/2,y:box.y+box.h/2},list=[];
       members(g).map(rect).forEach(p=>{if(p.w*p.h>=box.w*box.h*.5)return;const rnd=seeded(p.el.id||String(list.length)),px=p.x+p.w/2-c.x,py=p.y+p.h/2-c.y;
         const a=(Math.hypot(px,py)<8?rnd()*Math.PI*2:Math.atan2(py,px))+(rnd()-.5)*1.1,d=40+Math.max(box.w,box.h)*(.22+.18*rnd());
@@ -64,13 +67,13 @@
     // proportion. The group is the view timeline its pieces follow, over its entry: each piece is home a little after the
     // one before, all of them once the whole group is on the screen, which any group can reach, even at the very end of
     // a page.
-    function assemble(g){const {list}=throws(g),gid=(g.id||'group').replace(/[^a-z0-9-]/gi,''),n=list.length;if(!n)return false;
+    function assemble(g){const list=throws(g).list.filter(({p})=>recOf(p.el)!=='view'),gid=gidOf(g),n=list.length;if(!n)return false;
       B.write([{el:g,css:{'view-timeline-name':'--clay-in-'+gid}},...list.map(({p,dx,dy,turn},k)=>{const at=Math.round(40*k/Math.max(1,n-1));
         return {el:p.el,css:{'--clay-arrive':[dx/p.w*100,dy/p.h*100,turn].map(v=>+v.toFixed(1)).concat([at,at+60,gid]).join(' ')}};})],'These pieces wait apart, and come together as the page scrolls them into view.');return true;}
     // Gathering puts back the group's own story, and only hover scatter's hover looks are its to clear.
     const BONDS={magnet:'These pieces are attached and move together.',drawing:'These pieces are one drawing, split into parts.'};
     function gather(g){const hover=scattered(g);if(!hover&&!arriving(g))return false;
-      B.write([{el:g,css:{'--clay-reach':null,'view-timeline-name':null}},...members(g).flatMap(el=>[{el,css:{'--clay-scatter':null,'--clay-wait':null,'--clay-arrive':null}}].concat(hover?[{el,state:'hover',anchor:g,css:{transform:null}}]:[]))],BONDS[g.dataset.bond]||'These pieces form a sticky group.');return true;}
+      B.write([{el:g,css:{'--clay-reach':null,'view-timeline-name':null}},...members(g).flatMap(el=>[{el,css:{'--clay-scatter':null,'--clay-wait':null,...(ours(g,el)?{'--clay-arrive':null}:{})}}].concat(hover?[{el,state:'hover',anchor:g,css:{transform:null}}]:[]))],BONDS[g.dataset.bond]||'These pieces form a sticky group.');return true;}
     // Merged into a new group, a scattered one keeps scattering the same way, all of the new group's pieces.
     function merge(units,flavor){const how=units.filter(isGroup).map(g=>scattered(g)?scatter:arriving(g)?assemble:null).find(Boolean);
       units.filter(isGroup).forEach(gather);const g=wrap(units,flavor);if(g&&how)how(g);return g;}

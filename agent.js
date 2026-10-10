@@ -23,7 +23,8 @@
   function hex(c){const m=/^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/.exec(c);if(!m||m[4]==='0')return null;return '#'+[m[1],m[2],m[3]].map(v=>(+v).toString(16).padStart(2,'0')).join('');}
   function piece(el,r){r=r||R.rect(el);const o={id:el.id,kind:el.dataset.kind||'block',tag:el.tagName.toLowerCase(),x:round(r.x),y:round(r.y),width:round(r.w),height:round(r.h)};
     if(pinned(el))o.pinned=true;
-    if(R.isGroup(el)){o.bond=el.dataset.bond;o.members=R.members(el).map(m=>piece(m));return o;}
+    const ar=String(B.rule(el)['--clay-arrive']||'').split(' ');if(ar.length===6)o.arrives=ar[5]==='view'?{from:{x:round(+ar[0]/100*el.offsetWidth),y:round(+ar[1]/100*el.offsetHeight),turn:+ar[2]}}:'with its group';
+    if(R.isGroup(el)){o.bond=el.dataset.bond;const how=R.scattered(el)?'hover':R.arriving(el)?'scroll':'';if(how)o.scatter=how;o.members=R.members(el).map(m=>piece(m));return o;}
     if(el.tagName==='IMG'){const s=el.getAttribute('src')||'';o.alt=el.alt;o.picture=/^data:/.test(s)?'embedded in the page':s;return o;}
     const ps=parts(el);if(ps.length)o.parts=ps.map((p,i)=>{const x={part:i,tag:p.tagName.toLowerCase(),text:txt(p)};if(p.hasAttribute('href'))x.link=p.getAttribute('href');return x;});else o.text=txt(el);
     if(el.tagName==='A')o.link=el.getAttribute('href');
@@ -36,7 +37,7 @@
   // ---- changing it ----
   function find(id){const el=typeof id==='string'&&id&&document.getElementById(id);if(!el||!field.contains(el)||!el.hasAttribute('data-sculpt-item'))throw new Error('There is no piece "'+id+'". Read the page for the pieces and their ids.');return el;}
   function unit(id){const el=find(id);if(el.parentElement!==field)throw new Error('"'+id+'" is inside the group "'+el.parentElement.id+'". Change the group, or ungroup it first.');return el;}
-  function num(v,name,fallback){if(v==null)return fallback;const n=+v;if(!Number.isFinite(n))throw new Error(name+' should be a number of pixels.');return n;}
+  function num(v,name,fallback,unit='pixels'){if(v==null)return fallback;const n=+v;if(!Number.isFinite(n))throw new Error(name+' should be a number of '+unit+'.');return n;}
   function words(a,name){const v=a[name];if(typeof v!=='string')throw new Error('Give '+name+' as text.');if(v.length>5000)throw new Error(name+' is too long.');return v;}
   function color(v,name){if(typeof v!=='string'||!CSS.supports('color',v))throw new Error(name+' should be a colour, like #ffd66b or teal.');return v;}
   function bit(el,part,what){if(part==null){if(what==='link'){if(el.tagName==='A')return el;const ls=[...el.querySelectorAll('a')];if(ls.length===1)return ls[0];throw new Error('This piece has '+ls.length+' links. Say which part.');}
@@ -96,13 +97,22 @@
       case 'group':{if(!Array.isArray(a.pieces)||a.pieces.length<2)throw new Error('pieces lists at least two pieces.');const us=[...new Set(a.pieces.map(unit))];if(us.length<2)throw new Error('pieces lists at least two different pieces.');
         const g=R.wrap(us);if(!g)throw new Error('Those pieces can\'t be grouped.');touched.add(g);return {ok:true,id:g.id};}
       case 'ungroup':{const g=unit(a.piece);if(!R.isGroup(g))throw new Error('"'+a.piece+'" is not a group.');R.ungroup(g).forEach(e=>touched.add(e));return {ok:true};}
+      // where a piece waits, in pixels from where it sits on the desktop canvas, kept as shares of its size; null: home
+      case 'throw':{const el=find(a.piece);touched.add(R.unit(el));if(a.from===null){B.write([{el,css:B.arrive(null)}],label);return {ok:true};}
+        const f=a.from&&typeof a.from==='object'?a.from:null;if(!f)throw new Error('from is {"x":px,"y":px,"turn":degrees}, or null to keep it home.');
+        const x=num(f.x,'from.x',0),y=num(f.y,'from.y',0),t=num(f.turn,'from.turn',0,'degrees');if(!x&&!y&&!t)throw new Error('Give from an x, a y or a turn.');
+        // as far as Throw lets a hand take it: 20 times its own size, and half a turn either way
+        const w=el.offsetWidth||1,h=el.offsetHeight||1,cx=G.clamp(x,-20*w,20*w),cy=G.clamp(y,-20*h,20*h),ct=G.clamp(t,-180,180);
+        B.write([{el,css:B.arrive(cx/w*100,cy/h*100,ct)}],label);return cx!==x||cy!==y||ct!==t?{ok:true,note:'As far as it goes: from '+Math.round(cx)+', '+Math.round(cy)+', turned '+ct+'.'}:{ok:true};}
+      case 'scatter':{const g=unit(a.piece);if(!R.isGroup(g))throw new Error('"'+a.piece+'" is not a group.');if(!['scroll','hover','none'].includes(a.how))throw new Error('how is "scroll", "hover" or "none".');
+        R.gather(g);if(a.how!=='none'&&!(a.how==='hover'?R.scatter(g):R.assemble(g)))throw new Error('Every piece of "'+a.piece+'" is its backdrop, so there is nothing to scatter.');touched.add(g);return {ok:true};}
       // shorter than the pieces reach fits the canvas to them, so nothing is ever cut off
       case 'canvas':{const want=round(num(a.height,'height')),low=Math.ceil(lowest()),h=Math.max(want,low);B.write([{el:field,css:{height:h+'px'}}],label);
         return h===want?{ok:true,height:h}:{ok:true,height:h,note:'The pieces reach down to '+low+'px, so the canvas ends there.'};}
-      default:throw new Error('do is one of place, text, link, add, remove, paint, pin, group, ungroup, canvas.');}}
+      default:throw new Error('do is one of place, text, link, add, remove, paint, pin, group, ungroup, throw, scatter, canvas.');}}
   const quoted=id=>{const el=document.getElementById(id);return el?'“'+S.pieceName(el).slice(0,32)+'”':'a piece';};
   function phrase(a){if(!a)return '';switch(a.do){case 'place':return 'moved '+quoted(a.piece);case 'text':return 'rewrote '+quoted(a.piece);case 'link':return 'linked '+quoted(a.piece);case 'add':return 'added '+(a.like?'a piece like '+quoted(a.like):'a '+a.kind);
-    case 'remove':return 'removed '+quoted(a.piece);case 'paint':return 'painted '+quoted(a.piece);case 'pin':return (a.pinned===false?'unpinned ':'pinned ')+quoted(a.piece);case 'group':return 'grouped '+(a.pieces||[]).length+' pieces';case 'ungroup':return 'ungrouped '+quoted(a.piece);case 'canvas':return 'resized the canvas';default:return a.do;}}
+    case 'remove':return 'removed '+quoted(a.piece);case 'paint':return 'painted '+quoted(a.piece);case 'pin':return (a.pinned===false?'unpinned ':'pinned ')+quoted(a.piece);case 'group':return 'grouped '+(a.pieces||[]).length+' pieces';case 'ungroup':return 'ungrouped '+quoted(a.piece);case 'throw':return (a.from===null?'kept home ':'threw ')+quoted(a.piece);case 'scatter':return (a.how==='none'?'gathered ':'scattered ')+quoted(a.piece);case 'canvas':return 'resized the canvas';default:return a.do;}}
   function summary(list){const p=[...new Set(list.map(phrase))];return p.length<=2?p.join(' and '):p.slice(0,2).join(', ')+' and '+(p.length-2)+' more';}
   async function change(list,who,say){
     if(!Array.isArray(list)||!list.length)return {ok:false,error:'Send a list of actions.'};if(list.length>200)return {ok:false,error:'At most 200 actions at a time.'};
@@ -113,10 +123,11 @@
     B.stopMotion();B.still(true);const before=B.begin(),touched=new Set(),results=[];
     try{list.forEach((a,i)=>{try{results.push(apply(a,pages,label,touched));}catch(e){throw new Error('Action '+(i+1)+' ('+(a&&a.do)+'): '+e.message);}});}
     catch(e){B.restore(before);B.still(false);S.refresh();return {ok:false,error:e.message+' Nothing was changed.'};}
-    B.commit(before,label);B.still(false);S.refresh();S.say(label);
+    B.commit(before,label);S.refresh();S.say(label);
     const live=[...touched].filter(e=>e.isConnected),others=S.items(),warnings=[];
     live.forEach(e=>{e.animate([{outline:'3px solid #6756d4',outlineOffset:'6px'},{outline:'3px solid #6756d400',outlineOffset:'6px'}],{duration:1800,easing:'ease-out'});
       const r=R.rect(e);others.forEach(o=>{if(o!==e&&!(touched.has(o)&&o.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_FOLLOWING)&&G.overlaps(r,R.rect(o),-2))warnings.push(quoted(e.id)+' overlaps '+quoted(o.id)+'.');});});
+    B.still(false);
     return {ok:true,step:label,results,warnings,page:describe()};}
 
   // ---- the channel: wait for requests while this tab is showing, answer each one ----

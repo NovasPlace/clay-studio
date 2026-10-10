@@ -239,6 +239,8 @@ ACTIONS = '''Each action is an object with "do", and pieces are named by the ids
 - {"do":"paint","piece":id,"fill":"#ffd66b","text":"#24323c"} colours a piece's background, its words, or both.
 - {"do":"pin","piece":id,"pinned":true|false} pinned pieces stay put when the person sculpts.
 - {"do":"group","pieces":[id,...]} sticks pieces together; they move as one and stay together on phones. {"do":"ungroup","piece":id}
+- {"do":"throw","piece":id,"from":{"x":px,"y":px,"turn":degrees}} the piece waits that far from where it sits, turned, and flies home as the page opens and as visitors scroll to it (on phones too, in proportion). "from":null keeps it home.
+- {"do":"scatter","piece":id,"how":"scroll"|"hover"|"none"} a group's pieces wait apart and come together one after another, as the page scrolls the group into view ("scroll", phones too) or when the pointer reaches it ("hover", desktop); "none" gathers them.
 - {"do":"canvas","height":px} makes the page taller or shorter; asked to be shorter than its pieces, it ends just below the lowest one.
 All the actions in one call are one step in the person's history (one Undo), and either all happen or none do.'''
 MCP_TOOLS = [
@@ -246,11 +248,11 @@ MCP_TOOLS = [
      'inputSchema': {'type': 'object', 'properties': {}}},
     {'name': 'clay_new_page', 'description': 'Make a new page. It starts from "blank" (a heading, words, a button, two cards and a picture), "links" (a card per self-hosted app) or "sample" (the Clay demo page). You can then read and change it.',
      'inputSchema': {'type': 'object', 'properties': {'title': {'type': 'string'}, 'start': {'type': 'string', 'enum': ['blank', 'links', 'sample']}}, 'required': ['title']}},
-    {'name': 'clay_read_page', 'description': 'Read a page: every piece with its id, kind, position and size in pixels on the desktop canvas, its words (in parts, for cards and menus), links and colours. The person may be changing it too, so read it again before a new round of changes.',
+    {'name': 'clay_read_page', 'description': 'Read a page: every piece with its id, kind, position and size in pixels on the desktop canvas, its words (in parts, for cards and menus), links and colours, and what flies in (arrives; scatter, for groups). The person may be changing it too, so read it again before a new round of changes.',
      'inputSchema': {'type': 'object', 'properties': {'page': {'type': 'string', 'description': 'The page name from clay_pages'}}, 'required': ['page']}},
     {'name': 'clay_change_page', 'description': 'Change a page. If the person has it open they see each change appear as you make it, labelled with your name and what you said; either way it goes into the page\'s history, where they can undo it. Returns the page as it is afterwards, and warns about pieces that overlap.\n' + ACTIONS,
      'inputSchema': {'type': 'object', 'properties': {'page': {'type': 'string'}, 'say': {'type': 'string', 'description': 'A few words for the person, saying what you did, like "made the cards three across"'},
-                                                      'actions': {'type': 'array', 'items': {'type': 'object', 'properties': {'do': {'type': 'string', 'enum': ['place', 'text', 'link', 'add', 'remove', 'paint', 'pin', 'group', 'ungroup', 'canvas']}}, 'required': ['do']}}},
+                                                      'actions': {'type': 'array', 'items': {'type': 'object', 'properties': {'do': {'type': 'string', 'enum': ['place', 'text', 'link', 'add', 'remove', 'paint', 'pin', 'group', 'ungroup', 'throw', 'scatter', 'canvas']}}, 'required': ['do']}}},
                      'required': ['page', 'actions']}},
 ]
 MCP_ABOUT = ('Clay Studio is a web page editor where a person shapes pages by hand. You can work on the same pages with them: '

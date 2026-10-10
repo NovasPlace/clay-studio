@@ -584,4 +584,76 @@ Assemble on scroll, 2026-10-09 (Claude)
     6/6, revision 9/9, motion 8/8, agent 20/20, hosting 12/12, Act reduced
     motion 4/4, server 75/75, npm test 26/26.
   Not yet: a single piece can't arrive on its own (only a group's pieces),
-    and the throws can't be shaped by hand yet (they're Scatter's).
+    and the throws can't be shaped by hand yet (they're Scatter's). (Done
+    next, below: Throw.)
+
+Throw, and flying in as the page opens, 2026-10-09 (Claude)
+  sculpt.js: Throw (T, or the Throw button). Grab a piece and fling it off to
+    where it should come from; the wheel turns it while you hold it (a notch
+    per 100px of wheel, only during a throw). Let go and it flies home from
+    there; nothing in the layout moves. Kept from where you let go and how
+    it's turned: turning alone is a throw, dragging out and back is nothing.
+    It goes as far as 20 times the piece's own size, and says so there. A
+    tap keeps nothing, Esc cancels, double-click keeps it home again. A part
+    of a split drawing is thrown on its own.
+  studio.js: a thrown piece follows its own view timeline. Every arrival
+    (thrown pieces and Assemble on scroll groups) also flies in once as the
+    page opens, from where it waits to wherever the scroll has it (keyframes
+    with only a start, probed in Gecko), so a piece already on the screen
+    comes home, a group's pieces one after another, and one below the fold
+    just waits. A piece's motion set for a screen size or in a state keeps
+    its arrival there too, in the editor and the export. Undo moves only
+    what is out of place, so pieces that stay keep their motion running
+    (before, undoing an Add restarted every animation on the page).
+  relations.js / split: a group's arrivals are any group records on its
+    pieces (so a copied group gathers too); Assemble leaves a part thrown on
+    its own alone, and gathering keeps it; merging a thrown group, or
+    splitting a thrown picture, keeps the throw (as a share of the new size).
+  agent.js / serve.py: agents can {"do":"throw","piece","from":{x,y,turn}}
+    (null keeps it home) and {"do":"scatter","piece","how":"scroll"|"hover"|
+    "none"}; clay_read_page says what arrives and how a group scatters. A
+    throw too far goes as far as it can and says so; overlap warnings are
+    measured where pieces sit, not where they wait.
+  sculpt-ui.css: at 1440px and narrower the tool buttons are a little
+    narrower, so the bar stays one row at 1280px with Throw in it (found by
+    the split, revision and motion suites: the wrapped bar covered the spot
+    they press).
+  Found in review (three lenses, each checked by a skeptic; one refuted):
+    the open-page fly-in doubled a waiting piece's offset; hover or per-size
+    motion replayed it or dropped the arrival; undo replayed it; a copied
+    group couldn't be gathered; Assemble overwrote a part's own throw; a
+    turn-only throw was dropped; the throw limit was silent; split and merge
+    dropped a throw; the throw label overwrote the piece's position reason;
+    agents' overlap warnings measured pieces mid-flight; the wheel listener
+    stayed on; a browser without scroll-driven animations was promised a
+    fly-in. All fixed.
+  Headless Waterfox, real clicks, keys, mouse moves and wheel, Low Tide Club:
+    throw 30/30. T picks Throw; held at -300,120 and turned -30 by the wheel;
+    one labelled step, kept as shares of its size, on its own timeline; it
+    flies home closer every frame, home by 850ms; the layout doesn't move;
+    a tap and Esc keep nothing; a piece below the fold waits where it was
+    thrown (never twice as far while the page opens), comes in a little
+    more each notch, home once on screen, out again going up; a reload flies
+    the headline in; the export (no script, keyframes, view() timeline, the
+    fly-in, the clip, no record) flies in on a desktop and arrives on a
+    390px phone without sideways scroll; double-click keeps it home, Undo
+    brings the throw back; a part thrown on its own keeps its throw when the
+    drawing is gathered; hover motion keeps the arrival and leaving doesn't
+    replay it, in the export too; undoing an Add replays nothing; turning
+    alone is a throw, out and back is nothing; the limit (2000%) says so;
+    splitting a thrown picture keeps the throw (-200px both ways); Assemble
+    leaves a thrown part alone; a crab stilled at phone size only arrives
+    there and keeps its walk on a desktop. Agents over MCP: told about throw
+    and scatter, an agent throws and assembles in one labelled step in the
+    open editor, read back gives from -400,80,-12 and scatter scroll, a bad
+    throw changes nothing, a bad turn says degrees, a throw too far says how
+    far it went, from:null and how:none put everything home.
+    Reduced motion 1/1: the exported page keeps everything home.
+  Regression: assemble 25/25 (now three animations on a walking arriving
+    crab), act 26/26, act2 10/10, site 18/18, pages 11/11, Sculpt 30/30,
+    groups 8/8, Layout tools and classic 13/13, storage 5/5, split 6/6,
+    revision 9/9, motion 8/8, agent 20/20, hosting 12/12, reduced motion act
+    4/4 and assemble 3/3, server 75/75, npm test 26/26.
+  Not browser-checked: merging a thrown group keeps its throw; a copied
+    assembling group gathers; the message for browsers without scroll-driven
+    animations.
