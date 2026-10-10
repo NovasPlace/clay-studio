@@ -739,6 +739,12 @@ Bring in your server, 2026-10-10 (Claude)
     20/20).
   Chromium (the desktop app's browser pane): the drop, the dialog, the
     burst and the scroll into view (which Waterfox's checks had missed).
+  Tried by Donovan with a sample home server (Documents\Clay-Pages\
+    try-bring-in\compose.yaml): 12 apps, 7 new cards, 5 examples linked.
+    Found doing it: the empty address box's example read as a filled-in
+    address, and its warning showed in the dialog's grey (a more specific
+    rule won). Now the example says "Type it here, for example ..." in
+    italics, and an empty box says so, in the warning colour. bring 56/56.
   Not checked: a real drag from Explorer (the drop event carries real
     File objects, but is dispatched by script) and a real Ctrl+V (Firefox
     hides a scripted paste's clipboard, and a real one would overwrite

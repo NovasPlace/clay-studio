@@ -156,7 +156,7 @@
   box.innerHTML='<form method="dialog"><h2 id="clay-bring-title">Bring in your server</h2>'+
     '<p class="clay-bring-how">Drop your <code>compose.yaml</code> here or paste it, or the output of <code>docker ps</code>, or type one app a line, like <code>Jellyfin 192.168.1.20:8096</code>. Each app arrives as a card that opens it.</p>'+
     '<textarea aria-label="Your server’s apps" spellcheck="false" autocomplete="off"></textarea><p class="clay-bring-found" role="status" aria-live="polite"></p>'+
-    '<label class="clay-bring-where">Your server’s address, the one your family’s phones and computers use<input type="text" placeholder="192.168.1.20 or myserver.lan" autocomplete="off" spellcheck="false"></label>'+
+    '<label class="clay-bring-where">Your server’s address, the one your family’s phones and computers use<input type="text" placeholder="Type it here, for example 192.168.1.20" autocomplete="off" spellcheck="false"></label>'+
     '<p class="clay-bring-later">Next time, its apps go to the same server. To choose another, hold Shift as you drop the file.</p><p class="clay-bring-error" role="alert"></p>'+
     '<div class="actions"><button class="primary" value="ok">Bring them in</button><button value="cancel" formnovalidate>Cancel</button></div>'+
     '<p class="clay-bring-note">Clay reads only names, images, ports and a few labels. Passwords and other settings in the file are never read or saved.</p></form>';
@@ -175,7 +175,7 @@
   $('form').addEventListener('submit',e=>{if(!e.submitter||e.submitter.value!=='ok'||!job)return;
     if(job.typed){clearTimeout(typing);job.found=C.read([{name:'',text:area.value}]);show();}
     const f=job.found;if(!f||!f.apps.length){e.preventDefault();err(job.typed?f&&f.problems[0]||'Paste your compose file, or type your apps, first.':'There are no apps in that to bring in.');return;}
-    let h=pageServer();if(needs(f)){h=host(where.value);if(!h){e.preventDefault();err('Type your server’s address, like 192.168.1.20 or myserver.lan.');where.focus();return;}}
+    let h=pageServer();if(needs(f)){h=host(where.value);if(!h){e.preventDefault();err(where.value.trim()?'That isn’t an address. Type it like 192.168.1.20 or myserver.lan.':'The address box is empty. Type your server’s address first, like 192.168.1.20.');where.focus();return;}}
     job.host=h;job.go=true;});
   box.addEventListener('close',()=>{const j=job;job=null;if(box.returnValue==='ok'&&j&&j.go)go(j.found,j.host,j.at,j.from);});
   window.addEventListener('keydown',e=>{if(box.open)e.stopImmediatePropagation();},true);
