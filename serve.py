@@ -40,7 +40,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parent
 NAME = re.compile(r'^[a-z0-9][a-z0-9-]{0,47}$')
 BINNED = re.compile(r'^([a-z0-9][a-z0-9-]{0,47})--(\d{14})$')
-RUNTIME = {'studio.js', 'sculpt-core.js', 'relations.js', 'sculpt.js', 'sculpt-ui.css', 'agent.js'}
+RUNTIME = {'studio.js', 'sculpt-core.js', 'relations.js', 'sculpt.js', 'sculpt-ui.css', 'agent.js', 'compose.js', 'bring.js'}
 STARTERS = {'blank': ROOT / 'starters' / 'blank.html', 'links': ROOT / 'starters' / 'links.html', 'sample': ROOT / 'index.html'}
 TITLE = re.compile(r'<title>.*?</title>', re.I | re.S)
 PAGE_LINK = re.compile(r'href="([a-z0-9][a-z0-9-]{0,47})\.html(?:#[^"]*)?"')
@@ -241,6 +241,7 @@ ACTIONS = '''Each action is an object with "do", and pieces are named by the ids
 - {"do":"group","pieces":[id,...]} sticks pieces together; they move as one and stay together on phones. {"do":"ungroup","piece":id}
 - {"do":"throw","piece":id,"from":{"x":px,"y":px,"turn":degrees}} the piece waits that far from where it sits, turned, and flies home as the page opens and as visitors scroll to it (on phones too, in proportion). "from":null keeps it home.
 - {"do":"scatter","piece":id,"how":"scroll"|"hover"|"none"} a group's pieces wait apart and come together one after another, as the page scrolls the group into view ("scroll", phones too) or when the pointer reaches it ("hover", desktop); "none" gathers them.
+- {"do":"apps","from":"<a compose.yaml, docker ps output, or one app a line like Jellyfin 192.168.1.20:8096>","server":"192.168.1.20","env":"<its .env, if its ports or labels use ${...}>"} brings in the apps a server runs, each as a card that opens it, looking like the page's own cards. Cards already on the page for those apps get their links; apps already there are left as they are. Databases and other helpers are left out, and so is everything else in the file but names, images, ports and a few labels. server is the address the family's devices use for it; leave it out when the page already links to the server, or when the file's labels give each app its own address. For several compose files, send one apps action each, or put a line of three dashes (---) between them.
 - {"do":"canvas","height":px} makes the page taller or shorter; asked to be shorter than its pieces, it ends just below the lowest one.
 All the actions in one call are one step in the person's history (one Undo), and either all happen or none do.'''
 MCP_TOOLS = [
@@ -252,7 +253,7 @@ MCP_TOOLS = [
      'inputSchema': {'type': 'object', 'properties': {'page': {'type': 'string', 'description': 'The page name from clay_pages'}}, 'required': ['page']}},
     {'name': 'clay_change_page', 'description': 'Change a page. If the person has it open they see each change appear as you make it, labelled with your name and what you said; either way it goes into the page\'s history, where they can undo it. Returns the page as it is afterwards, and warns about pieces that overlap.\n' + ACTIONS,
      'inputSchema': {'type': 'object', 'properties': {'page': {'type': 'string'}, 'say': {'type': 'string', 'description': 'A few words for the person, saying what you did, like "made the cards three across"'},
-                                                      'actions': {'type': 'array', 'items': {'type': 'object', 'properties': {'do': {'type': 'string', 'enum': ['place', 'text', 'link', 'add', 'remove', 'paint', 'pin', 'group', 'ungroup', 'throw', 'scatter', 'canvas']}}, 'required': ['do']}}},
+                                                      'actions': {'type': 'array', 'items': {'type': 'object', 'properties': {'do': {'type': 'string', 'enum': ['place', 'text', 'link', 'add', 'remove', 'paint', 'pin', 'group', 'ungroup', 'throw', 'scatter', 'apps', 'canvas']}}, 'required': ['do']}}},
                      'required': ['page', 'actions']}},
 ]
 MCP_ABOUT = ('Clay Studio is a web page editor where a person shapes pages by hand. You can work on the same pages with them: '

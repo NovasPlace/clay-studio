@@ -27,7 +27,7 @@
     if(R.isGroup(el)){o.bond=el.dataset.bond;const how=R.scattered(el)?'hover':R.arriving(el)?'scroll':'';if(how)o.scatter=how;o.members=R.members(el).map(m=>piece(m));return o;}
     if(el.tagName==='IMG'){const s=el.getAttribute('src')||'';o.alt=el.alt;o.picture=/^data:/.test(s)?'embedded in the page':s;return o;}
     const ps=parts(el);if(ps.length)o.parts=ps.map((p,i)=>{const x={part:i,tag:p.tagName.toLowerCase(),text:txt(p)};if(p.hasAttribute('href'))x.link=p.getAttribute('href');return x;});else o.text=txt(el);
-    if(el.tagName==='A')o.link=el.getAttribute('href');
+    if(el.tagName==='A')o.link=el.getAttribute('href');if(el.dataset.app)o.app=el.dataset.app;
     const s=getComputedStyle(el),fill=hex(s.backgroundColor);if(fill)o.fill=fill;o.color=hex(s.color);return o;}
   function describe(){B.stopMotion();B.still(true);try{const b=S.bounds();
     return {page,title:document.title,canvas:{width:round(b.w),height:round(b.h)},
@@ -65,7 +65,7 @@
     // a new card or button looks like one already on the page, unless the agent says which piece to copy
     if(a.like==null&&(a.kind==='card'||a.kind==='button'))tmpl=field.querySelector('[data-sculpt-item][data-kind="'+a.kind+'"]');
     if(a.like!=null||tmpl){const src=tmpl||find(a.like);if(R.isGroup(src))throw new Error('like takes a single piece, not a group.');el=src.cloneNode(true);kind=src.dataset.kind;
-      [el,...el.querySelectorAll('*')].forEach(n=>{['data-cs','data-sculpt-selected','data-sculpt-locked'].forEach(k=>n.removeAttribute(k));if(n!==el)n.removeAttribute('id');});
+      [el,...el.querySelectorAll('*')].forEach(n=>{['data-cs','data-sculpt-selected','data-sculpt-locked','data-app'].forEach(k=>n.removeAttribute(k));if(n!==el)n.removeAttribute('id');});
       if(tmpl){const ps=parts(el);(ps.length?ps:[el]).forEach(p=>{p.textContent='';});if(el.tagName==='A')el.setAttribute('href','#');}}
     else{kind=a.kind;if(!KINDS.includes(kind))throw new Error('kind is one of '+KINDS.join(', ')+', or use "like" with the id of a piece to copy its look.');
       el=document.createElement(kind==='card'?'article':kind==='button'?'a':kind==='image'?'img':'p');el.className='piece '+(kind==='card'?'note leaf':kind==='button'?'join':kind==='text'?'intro':'');
@@ -84,7 +84,7 @@
     B.write([{el,css:{position:'absolute',...(kind==='image'?{height:num(a.height,'height',190)+'px'}:{})}},S.mobileRules(el)],label);
     position(el,{x:num(a.x,'x',b.w*.06),y:num(a.y,'y',lowest()+24),width:w,size:a.size},label,true);reread(el);return el;}
   // Everything a request says, one action at a time. Throws with the reason if one can't be done.
-  function apply(a,pages,label,touched){if(!a||typeof a!=='object')throw new Error('Each action is an object with "do".');
+  function apply(a,pages,label,touched,jobs){if(!a||typeof a!=='object')throw new Error('Each action is an object with "do".');
     switch(a.do){
       case 'place':{const el=unit(a.piece);position(el,a,label);if(a.x!=null||a.y!=null)reread(el);touched.add(el);return {ok:true};}
       case 'text':{const el=find(a.piece),t=bit(el,a.part,'text');B.textNow(t,words(a,'text'));if(R.isGroup(R.unit(el)))R.fit(R.unit(el));touched.add(R.unit(el));return {ok:true};}
@@ -109,10 +109,14 @@
       // shorter than the pieces reach fits the canvas to them, so nothing is ever cut off
       case 'canvas':{const want=round(num(a.height,'height')),low=Math.ceil(lowest()),h=Math.max(want,low);B.write([{el:field,css:{height:h+'px'}}],label);
         return h===want?{ok:true,height:h}:{ok:true,height:h,note:'The pieces reach down to '+low+'px, so the canvas ends there.'};}
-      default:throw new Error('do is one of place, text, link, add, remove, paint, pin, group, ungroup, throw, scatter, canvas.');}}
+      // a server's apps as cards that open them: matched to the cards already here, and new ones for the rest
+      case 'apps':{const j=jobs&&jobs.get(a);if(!j)throw new Error('Clay couldn’t read the apps just now. Try again.');if(j instanceof Error)throw j;
+        const r=window.ClayBring.apply(window.ClayBring.prepare(j.found,j.host),label);r.made.concat(r.link.map(x=>x.el)).forEach(e=>touched.add(R.unit(e)));
+        return {ok:true,added:r.made.map(e=>e.id),linked:r.link.map(x=>x.el.id),note:window.ClayBring.words(r,'what you sent',true)};}
+      default:throw new Error('do is one of place, text, link, add, remove, paint, pin, group, ungroup, throw, scatter, apps, canvas.');}}
   const quoted=id=>{const el=document.getElementById(id);return el?'“'+S.pieceName(el).slice(0,32)+'”':'a piece';};
   function phrase(a){if(!a)return '';switch(a.do){case 'place':return 'moved '+quoted(a.piece);case 'text':return 'rewrote '+quoted(a.piece);case 'link':return 'linked '+quoted(a.piece);case 'add':return 'added '+(a.like?'a piece like '+quoted(a.like):'a '+a.kind);
-    case 'remove':return 'removed '+quoted(a.piece);case 'paint':return 'painted '+quoted(a.piece);case 'pin':return (a.pinned===false?'unpinned ':'pinned ')+quoted(a.piece);case 'group':return 'grouped '+(a.pieces||[]).length+' pieces';case 'ungroup':return 'ungrouped '+quoted(a.piece);case 'throw':return (a.from===null?'kept home ':'threw ')+quoted(a.piece);case 'scatter':return (a.how==='none'?'gathered ':'scattered ')+quoted(a.piece);case 'canvas':return 'resized the canvas';default:return a.do;}}
+    case 'remove':return 'removed '+quoted(a.piece);case 'paint':return 'painted '+quoted(a.piece);case 'pin':return (a.pinned===false?'unpinned ':'pinned ')+quoted(a.piece);case 'group':return 'grouped '+(a.pieces||[]).length+' pieces';case 'ungroup':return 'ungrouped '+quoted(a.piece);case 'throw':return (a.from===null?'kept home ':'threw ')+quoted(a.piece);case 'scatter':return (a.how==='none'?'gathered ':'scattered ')+quoted(a.piece);case 'apps':return 'brought in apps';case 'canvas':return 'resized the canvas';default:return a.do;}}
   function summary(list){const p=[...new Set(list.map(phrase))];return p.length<=2?p.join(' and '):p.slice(0,2).join(', ')+' and '+(p.length-2)+' more';}
   async function change(list,who,say){
     if(!Array.isArray(list)||!list.length)return {ok:false,error:'Send a list of actions.'};if(list.length>200)return {ok:false,error:'At most 200 actions at a time.'};
@@ -120,11 +124,14 @@
     const label=who+': '+(typeof say==='string'&&say.trim()?say.trim().slice(0,140):summary(list));
     // text and links that will change are noted first, so Undo knows what they were
     list.forEach(a=>{if(a&&(a.do==='text'||a.do==='link')){try{B.mark(bit(find(a.piece),a.part,a.do),a.do);}catch(e){}}});
+    // apps are read before the step, and every link they might give an address is noted (they're matched to the cards
+    // when their turn comes)
+    const jobs=new Map();if(list.some(a=>a&&a.do==='apps')){await S.bringing;list.forEach(a=>{if(a&&a.do==='apps'){try{jobs.set(a,window.ClayBring.agentRead(a));}catch(e){jobs.set(a,e);}}});if(window.ClayBring)window.ClayBring.markAll();}
     B.stopMotion();B.still(true);const before=B.begin(),touched=new Set(),results=[];
-    try{list.forEach((a,i)=>{try{results.push(apply(a,pages,label,touched));}catch(e){throw new Error('Action '+(i+1)+' ('+(a&&a.do)+'): '+e.message);}});}
+    try{list.forEach((a,i)=>{try{results.push(apply(a,pages,label,touched,jobs));}catch(e){throw new Error('Action '+(i+1)+' ('+(a&&a.do)+'): '+e.message);}});}
     catch(e){B.restore(before);B.still(false);S.refresh();return {ok:false,error:e.message+' Nothing was changed.'};}
     B.commit(before,label);S.refresh();S.say(label);
-    const live=[...touched].filter(e=>e.isConnected),others=S.items(),warnings=[];
+    const live=[...touched].filter(e=>e&&e.isConnected),others=S.items(),warnings=[];
     live.forEach(e=>{e.animate([{outline:'3px solid #6756d4',outlineOffset:'6px'},{outline:'3px solid #6756d400',outlineOffset:'6px'}],{duration:1800,easing:'ease-out'});
       const r=R.rect(e);others.forEach(o=>{if(o!==e&&!(touched.has(o)&&o.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_FOLLOWING)&&G.overlaps(r,R.rect(o),-2))warnings.push(quoted(e.id)+' overlaps '+quoted(o.id)+'.');});});
     B.still(false);

@@ -212,7 +212,8 @@ check('34 Restoring when the name is taken gives it a new one', st == 200 and ba
 check('35 Unknown pages and odd names are refused', s.req('GET', '/p/no-such-page/')[0] == 404 and s.req('GET', '/p/Family-Links/')[0] == 404
       and call('PUT', '/api/pages/..%2Fx/state', {'rev': 0})[0] == 404 and call('POST', '/api/trash/../restore')[0] == 404)
 check('36 Starting from something unknown is refused', call('POST', '/api/pages', {'title': 'x', 'from': 'serve.py'})[0] == 400)
-check('37 Only the runtime is served beside a page', s.req('GET', '/p/family-links-2/serve.py')[0] == 404 and s.req('GET', '/p/family-links-2/../serve.py')[0] == 404)
+check('37 Only the runtime is served beside a page, with what reads a server’s apps', s.req('GET', '/p/family-links-2/serve.py')[0] == 404 and s.req('GET', '/p/family-links-2/../serve.py')[0] == 404
+      and s.req('GET', '/p/family-links-2/compose.js')[0] == 200 and s.req('GET', '/p/family-links-2/bring.js')[0] == 200)
 s.stop()
 
 # A whole site

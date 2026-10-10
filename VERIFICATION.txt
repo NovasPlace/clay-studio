@@ -657,3 +657,90 @@ Throw, and flying in as the page opens, 2026-10-09 (Claude)
   Not browser-checked: merging a thrown group keeps its throw; a copied
     assembling group gathers; the message for browsers without scroll-driven
     animations.
+
+Bring in your server, 2026-10-10 (Claude)
+  compose.js (new): reads which apps a server runs, with no network or
+    Docker access. The part of YAML compose files use (block maps and
+    lists, [..] and {..}, quotes, comments, | and > text, anchors and <<:
+    merges, several documents; a name given twice is a mistake, as in
+    Docker, and two compose files run together are read as two). ${VAR}
+    forms, nested defaults and $$, from a dropped .env. Ports short and
+    long, IPv6, ranges, host_ip, 127.0.0.1 binds (named as only on the
+    server), network_mode host and service: (through the VPN's ports: the
+    app's own first, never gluetun's proxy ports or another app's).
+    Traefik, Caddy, Homepage and Unraid labels give an address; one still
+    holding a ${VAR} doesn't. A catalog of 90 apps by image (family words,
+    colour, web port, https, path); databases, caches, workers, proxies,
+    machine learning and upkeep are left out as helpers, by image or name.
+    Also docker ps / docker compose ps, and one app a line. A file that
+    won't read is read a service at a time. Only names, images, ports,
+    network modes and address labels are read; environment values and
+    other labels (widget keys) never are, and nothing of the file is kept.
+  bring.js (new): drop a compose file (and its .env) on the canvas, paste
+    it, or Add + -> Apps on your server... (paste or type, with what it
+    found shown as you type). Cards for those apps already on the page get
+    their links (matched by what Clay marked them as, their label, or
+    their address); new apps get cards copied from the page's own, in
+    its colours, in its grid (holes first, then rows below; columns that
+    hold a card; round pinned pieces; never across a piece), with what was
+    below moving down and the canvas growing; on phones they follow the
+    piece before them in reading order. They burst out of where the file
+    landed, the linked cards glow, and the page scrolls them into view
+    above the tools. One step, one Undo (marks included). The first time
+    on a page it asks for the server's address (prefilled); later drops
+    use the server of the cards Clay brought in; Shift-drop asks again.
+    The hint says what came in, what got linked, what's already here,
+    what has no address (and why), what was left out and why, and which
+    examples are still unlinked. A picture dragged from another page isn't
+    an app.
+  studio.js: Undo and Redo keep which app a card stands for; a copy
+    doesn't carry it.
+  agent.js / serve.py: {"do":"apps","from","server","env"} for agents,
+    read before the step and matched when its turn comes, so earlier
+    actions in the request count; describe() says a card's app.
+  Found in review (three lenses, each checked by a skeptic; 21 confirmed,
+    1 refuted), then a second pass on the fixes (8 confirmed, 1 refuted):
+    an unset ${VAR} in a Homepage label became a link; general service
+    names ("app", "server", "web") collided across files; numbered workers
+    in docker ps became cards; typed apps ignored https ports and paths
+    (and then dropped https for public names); a long-form host_ip, nested
+    defaults and widget keys were misread; gluetun's proxy port was
+    guessed (then the filter took apps' own ports); concatenated stacks;
+    an agent's apps were matched before its earlier actions; overlapping
+    columns on an off-true grid; rows over a pinned piece; a straddled drop
+    line scrambled the header; a hand-linked card stood in for the server;
+    a dragged web picture became a card; a card with no address counted
+    as already here; phone order split the cards; a renamed card was
+    added again; Undo left marks; copies carried them; the canvas grew by
+    a full jump past a pinned footer; agents were told to drop a file.
+    All fixed.
+  Node: compose 20/20 (an Immich file, a linuxserver media stack, labels,
+    .env, IPv6, docker ps, typed lines, a broken service, the fixes).
+  Headless Waterfox, real keys and clicks, real File objects in a drop
+    event: bring 56/56. The first drop asks (an empty address refused),
+    four example cards linked, four new cards in the page's look, words,
+    colours, grid and width; the footer moves as far as the cards reach
+    and the canvas with it; no overlaps; scrolled into view; reading
+    order; burst; hint word for word; nothing from the file kept; Undo,
+    Redo, reload; a second drop adds only Navidrome without asking, and
+    the same file again changes nothing; Shift-drop asks; Add + typing and
+    a pasted compose file; Escape; paste on the page; a page with no
+    cards; the review cases above; export has plain links and no script.
+    Agents over MCP: told about apps, asked for the server, one labelled
+    step, read back with app, the next time without server, junk refused,
+    removes then apps in one request, an earlier link kept, env, an
+    agent's copied card unmarked.
+    Reduced motion 45/45: nothing flies.
+  Regression (after both review rounds): throw 30/30, assemble 25/25,
+    act 26/26, act2 10/10, site 18/18, pages 11/11, Sculpt 30/30, groups
+    8/8, Layout tools and classic 13/13, storage 5/5, split 6/6, revision
+    9/9, motion 8/8, agent 20/20, hosting 12/12, reduced motion throw 1/1,
+    act 4/4 and assemble 3/3, server 75/75, npm test 46/46 (with compose
+    20/20).
+  Chromium (the desktop app's browser pane): the drop, the dialog, the
+    burst and the scroll into view (which Waterfox's checks had missed).
+  Not checked: a real drag from Explorer (the drop event carries real
+    File objects, but is dispatched by script) and a real Ctrl+V (Firefox
+    hides a scripted paste's clipboard, and a real one would overwrite
+    this computer's clipboard, so the paste event carries its words).
+    Folders of compose files aren't read; drop the files.

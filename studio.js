@@ -379,7 +379,8 @@
   function snapshot(){var texts={},srcs={},hrefs={};Object.keys(edited).forEach(function(id){var e=byId(id);if(e)texts[id]=e.innerHTML;});
     Object.keys(imaged).forEach(function(id){var e=byId(id);if(e)srcs[id]=e.getAttribute('src');});
     Object.keys(linked).forEach(function(id){var e=byId(id);if(e)hrefs[id]=e.getAttribute('href');});lastWhy='';
-    return {layers:JSON.parse(JSON.stringify(layers)),reasons:Object.assign({},reasons),orders:capture(),copyOf:Object.assign({},copyOf),texts:texts,srcs:srcs,hrefs:hrefs,
+    var apps={};Array.prototype.forEach.call(root.querySelectorAll('[data-app]'),function(e){apps[idOf(e)]=e.getAttribute('data-app');});
+    return {layers:JSON.parse(JSON.stringify(layers)),reasons:Object.assign({},reasons),orders:capture(),copyOf:Object.assign({},copyOf),texts:texts,srcs:srcs,hrefs:hrefs,apps:apps,
       epoch:epoch,html:pooled(),edited:Object.assign({},edited),inserted:JSON.parse(JSON.stringify(inserted)),imaged:JSON.parse(JSON.stringify(imaged)),linked:JSON.parse(JSON.stringify(linked))};}
   function allItems(){var items=[];containers().forEach(function(c){items=items.concat(kids(c));});return items;}
   function restore(s){
@@ -395,6 +396,9 @@
       // a link that had no address before this step loses the one it was given
       Object.keys(linked).forEach(function(id){var e=byId(id),h=s.hrefs&&id in s.hrefs?s.hrefs[id]:linked[id].orig;if(!e||e.getAttribute('href')===h)return;if(h==null)e.removeAttribute('href');else e.setAttribute('href',h);});
       if(s.linked)linked=JSON.parse(JSON.stringify(s.linked));
+      // which app a card stands for, as Bring in your server marked it
+      if(s.apps){Array.prototype.forEach.call(root.querySelectorAll('[data-app]'),function(e){if(!(idOf(e) in s.apps))e.removeAttribute('data-app');});
+        Object.keys(s.apps).forEach(function(id){var e=byId(id);if(e&&e.getAttribute('data-app')!==s.apps[id])e.setAttribute('data-app',s.apps[id]);});}
       if(s.texts)Object.keys(s.texts).forEach(function(id){var e=byId(id);if(e&&e.innerHTML!==s.texts[id])e.innerHTML=s.texts[id];});
       layers=JSON.parse(JSON.stringify(s.layers));reasons=Object.assign({},s.reasons);copyOf=Object.assign({},s.copyOf||{});render();
     });
@@ -829,7 +833,7 @@
   function cloneOf(el){
     var c=el.cloneNode(true),src=[el].concat(Array.prototype.slice.call(el.querySelectorAll('*'))),dst=[c].concat(Array.prototype.slice.call(c.querySelectorAll('*')));
     // a copy can't share an id with its original, so ids inside it take the next free number
-    var taken={};dst.forEach(function(n){n.removeAttribute('data-cs');if(n.style){n.style.translate=n.style.scale=n.style.transformOrigin='';}
+    var taken={};dst.forEach(function(n){n.removeAttribute('data-cs');n.removeAttribute('data-app');if(n.style){n.style.translate=n.style.scale=n.style.transformOrigin='';}
       if(n.id){var b=n.id.replace(/-\d+$/,''),i=2;while(doc.getElementById(b+'-'+i)||taken[b+'-'+i])i++;n.id=b+'-'+i;taken[n.id]=1;}});
     // the copy carries the studio's rules for the original and everything inside it
     var to={};src.forEach(function(s,i){var sid=s.getAttribute('data-cs');if(sid&&dst[i])to[sid]=idOf(dst[i]);});
