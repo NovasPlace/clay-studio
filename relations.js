@@ -42,20 +42,38 @@
     function describe(){return [...field.querySelectorAll(':scope > [data-kind=group]')].map(g=>({id:g.id,bond:g.dataset.bond,members:members(g).map(e=>e.id)}));}
     // Everything here measures pieces where they belong: held, a scattered piece is home and motion pauses.
     const steady=f=>(...a)=>{if(document.documentElement.hasAttribute('data-clay-drag'))return f(...a);B.still(true);try{return f(...a);}finally{B.still(false);}};
-    // Scatter: each piece waits a little way out from the group's centre, turned, and comes home on hover, in drawing order.
-    // A piece that covers half the group or more is its backdrop and stays. The same group always scatters the same way.
+    // Scatter: each piece waits a little way out from the group's centre, turned, and comes home in drawing order: on
+    // hover, when the pointer reaches the group (with a mouse, on a wide screen); or on scroll, as the page scrolls the
+    // group into view, on every screen, and apart again on the way back. A piece that covers half the group or more is
+    // its backdrop and stays. The same group always scatters the same way.
     function seeded(s){let h=2166136261;for(const c of s)h=Math.imul(h^c.charCodeAt(0),16777619);return ()=>{h=Math.imul(h^h>>>15,2246822507)^Math.imul(h^h>>>13,3266489909);return ((h^=h>>>16)>>>0)/4294967296;};}
     function scattered(g){return isGroup(g)&&members(g).some(e=>getComputedStyle(e).getPropertyValue('--clay-scatter').trim());}
-    function scatter(g){const box=rect(g),W=field.clientWidth,H=field.clientHeight,c={x:box.x+box.w/2,y:box.y+box.h/2},out={t:0,r:0,b:0,l:0},rows=[];let n=0;
-      members(g).map(rect).forEach(p=>{if(p.w*p.h>=box.w*box.h*.5)return;const rnd=seeded(p.el.id||String(n)),px=p.x+p.w/2-c.x,py=p.y+p.h/2-c.y;
+    function arriving(g){return isGroup(g)&&members(g).some(e=>B.rule(e)['--clay-arrive']);}
+    function throws(g){const box=rect(g),W=field.clientWidth,H=field.clientHeight,c={x:box.x+box.w/2,y:box.y+box.h/2},list=[];
+      members(g).map(rect).forEach(p=>{if(p.w*p.h>=box.w*box.h*.5)return;const rnd=seeded(p.el.id||String(list.length)),px=p.x+p.w/2-c.x,py=p.y+p.h/2-c.y;
         const a=(Math.hypot(px,py)<8?rnd()*Math.PI*2:Math.atan2(py,px))+(rnd()-.5)*1.1,d=40+Math.max(box.w,box.h)*(.22+.18*rnd());
-        const dx=G.clamp(Math.cos(a)*d,8-p.x,W-p.x-p.w-8),dy=G.clamp(Math.sin(a)*d,8-p.y,H-p.y-p.h-8),turn=(rnd()<.5?-1:1)*(6+rnd()*16),pad=Math.max(p.w,p.h)*.2+16;
-        rows.push({el:p.el,css:{'--clay-scatter':'translate('+dx.toFixed(1)+'px, '+dy.toFixed(1)+'px) rotate('+turn.toFixed(1)+'deg)','--clay-wait':(n++*.07).toFixed(2)+'s'}},{el:p.el,state:'hover',anchor:g,css:{transform:'none'}});
+        list.push({p,dx:G.clamp(Math.cos(a)*d,8-p.x,W-p.x-p.w-8),dy:G.clamp(Math.sin(a)*d,8-p.y,H-p.y-p.h-8),turn:(rnd()<.5?-1:1)*(6+rnd()*16)});});
+      return {box,list};}
+    function scatter(g){const {box,list}=throws(g),out={t:0,r:0,b:0,l:0},rows=[];if(!list.length)return false;
+      list.forEach(({p,dx,dy,turn},n)=>{const pad=Math.max(p.w,p.h)*.2+16;
+        rows.push({el:p.el,css:{'--clay-scatter':'translate('+dx.toFixed(1)+'px, '+dy.toFixed(1)+'px) rotate('+turn.toFixed(1)+'deg)','--clay-wait':(n*.07).toFixed(2)+'s'}},{el:p.el,state:'hover',anchor:g,css:{transform:'none'}});
         out.l=Math.max(out.l,box.x-p.x-dx+pad);out.t=Math.max(out.t,box.y-p.y-dy+pad);out.r=Math.max(out.r,p.x+dx+p.w-box.x-box.w+pad);out.b=Math.max(out.b,p.y+dy+p.h-box.y-box.h+pad);});
-      if(!n)return false;
       rows.push({el:g,css:{'--clay-reach':[out.t,out.r,out.b,out.l].map(v=>-Math.round(Math.max(0,v))+'px').join(' ')}});
       B.write(rows,'These pieces wait apart, and come together when the pointer reaches them.');return true;}
-    function gather(g){if(!scattered(g))return false;B.write([{el:g,css:{'--clay-reach':null}},...members(g).flatMap(el=>[{el,css:{'--clay-scatter':null,'--clay-wait':null}},{el,state:'hover',anchor:g,css:{transform:null}}])]);return true;}
-    return {isGroup,members,unit,rect,wrap:steady((units,flavor)=>{units.filter(isGroup).forEach(gather);return wrap(units,flavor);}),ungroup:steady(g=>{gather(g);return ungroup(g);}),peel:steady(el=>{gather(el.parentElement);return peel(el);}),fit:steady(fit),resizeState:steady(resizeState),resize:steady(resize),minimum:steady(minimum),describe,scatter:steady(scatter),gather,scattered};
+    // On scroll, each piece's throw is kept as a share of its own size, so a drawing that shrinks on a phone throws in
+    // proportion. The group is the view timeline its pieces follow, over its entry: each piece is home a little after the
+    // one before, all of them once the whole group is on the screen, which any group can reach, even at the very end of
+    // a page.
+    function assemble(g){const {list}=throws(g),gid=(g.id||'group').replace(/[^a-z0-9-]/gi,''),n=list.length;if(!n)return false;
+      B.write([{el:g,css:{'view-timeline-name':'--clay-in-'+gid}},...list.map(({p,dx,dy,turn},k)=>{const at=Math.round(40*k/Math.max(1,n-1));
+        return {el:p.el,css:{'--clay-arrive':[dx/p.w*100,dy/p.h*100,turn].map(v=>+v.toFixed(1)).concat([at,at+60,gid]).join(' ')}};})],'These pieces wait apart, and come together as the page scrolls them into view.');return true;}
+    // Gathering puts back the group's own story, and only hover scatter's hover looks are its to clear.
+    const BONDS={magnet:'These pieces are attached and move together.',drawing:'These pieces are one drawing, split into parts.'};
+    function gather(g){const hover=scattered(g);if(!hover&&!arriving(g))return false;
+      B.write([{el:g,css:{'--clay-reach':null,'view-timeline-name':null}},...members(g).flatMap(el=>[{el,css:{'--clay-scatter':null,'--clay-wait':null,'--clay-arrive':null}}].concat(hover?[{el,state:'hover',anchor:g,css:{transform:null}}]:[]))],BONDS[g.dataset.bond]||'These pieces form a sticky group.');return true;}
+    // Merged into a new group, a scattered one keeps scattering the same way, all of the new group's pieces.
+    function merge(units,flavor){const how=units.filter(isGroup).map(g=>scattered(g)?scatter:arriving(g)?assemble:null).find(Boolean);
+      units.filter(isGroup).forEach(gather);const g=wrap(units,flavor);if(g&&how)how(g);return g;}
+    return {isGroup,members,unit,rect,wrap:steady(merge),ungroup:steady(g=>{gather(g);return ungroup(g);}),peel:steady(el=>{gather(el.parentElement);return peel(el);}),fit:steady(fit),resizeState:steady(resizeState),resize:steady(resize),minimum:steady(minimum),describe,scatter:steady(scatter),assemble:steady(assemble),gather,scattered,arriving};
   };
 })();

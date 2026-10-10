@@ -60,6 +60,19 @@
     scuttle:{label:'Scuttle',time:'2.2s ease-in-out',k:'0%,100%{--clay-dx:0px;--clay-r:0deg}20%{--clay-dx:5px;--clay-r:-3deg}40%{--clay-dx:0px;--clay-r:0deg}60%{--clay-dx:-5px;--clay-r:3deg}80%{--clay-dx:0px;--clay-r:0deg}'},
     drift:{label:'Drift',time:'13s ease-in-out',k:'0%,100%{--clay-dx:0px;--clay-dy:0px}25%{--clay-dx:34px;--clay-dy:-22px}50%{--clay-dx:-10px;--clay-dy:-38px}75%{--clay-dx:-30px;--clay-dy:8px}'}};
   var MOVED={translate:'var(--clay-dx,0px) var(--clay-dy,0px)',rotate:'var(--clay-r,0deg)',scale:'var(--clay-s,1)'};
+  // Assemble on scroll: a scattered piece waits apart and flies home as its group scrolls into view, scrubbed by the
+  // scroll itself, so it comes apart again on the way back. It moves through three more registered values, added to its
+  // idle motion's, with keyframes of its own (shared keyframes reading var() only jump halfway in Gecko). Its record,
+  // "x% y% turn start% end% group", is rebuilt from numbers only. Without scroll-driven animations, or for people who ask
+  // for less motion, it is simply home.
+  var MOVED_IN={translate:'calc(var(--clay-dx,0px) + var(--clay-ax,0px)) calc(var(--clay-dy,0px) + var(--clay-ay,0px))',rotate:'calc(var(--clay-r,0deg) + var(--clay-ar,0deg))',scale:'var(--clay-s,1)'};
+  var IN_EASE='cubic-bezier(.2,.7,.3,1)',SCROLLS='(prefers-reduced-motion: no-preference)',VIEW='(animation-timeline: view())';
+  function arriveOf(r){var v=String(r&&r['--clay-arrive']||'').trim().split(/\s+/),n=v.slice(0,5).map(Number),g=v[5];
+    if(v.length!==6||!n.every(isFinite)||!/^[a-z0-9-]+$/i.test(g))return null;var data=n.join(' ');
+    return {name:'clay-in-'+hash(data),frames:'from{--clay-ax:'+n[0]+'%;--clay-ay:'+n[1]+'%;--clay-ar:'+n[2]+'deg}to{--clay-ax:0%;--clay-ay:0%;--clay-ar:0deg}',timeline:'--clay-in-'+g,range:'entry '+n[3]+'% entry '+n[4]+'%'};}
+  // A piece that also has idle motion keeps it: both run, the idle one on time and the arrival on the scroll.
+  function arriving(r,a){var own=r.animation&&r.animation!=='none'?r.animation:'';
+    return {animation:(own?own+', ':'')+a.name+' '+IN_EASE+' both','animation-timeline':(own?'auto, ':'')+a.timeline,'animation-range':(own?'normal, ':'')+a.range};}
   // Scatter: a group's pieces wait apart (--clay-scatter) and come together on the group's hover, one after another
   // (--clay-wait). The group reaches past its box (--clay-reach), under everything else, so the pointer stays on it while
   // the pieces travel. Only with a mouse, on a wide screen, for people who haven't asked for less motion; everyone else
@@ -77,10 +90,10 @@
   function takeOf(r){var data=r&&r['--clay-take'],name=data&&'clay-take-'+hash(data),f=name&&(r.animation||'').split(/[\s,]+/).indexOf(name)>=0&&takeFrames(data);return f?{name:name,frames:f}:null;}
   function takeCSS(t){var data=t.stops.map(function(s){return [s.t,s.x,s.y].map(function(v){return +(+v).toFixed(2);}).join(' ');}).join(',');
     return {animation:'clay-take-'+hash(data)+' '+(+t.duration)+'s linear '+(t.delay?'-'+(+t.delay)+'s ':'')+'infinite'+(t.loop?'':' alternate'),'--clay-take':data};}
-  function motionCSS(used,takes){var n=Object.keys(used).filter(function(k){return MOTIONS[k]&&MOTIONS[k].k;}),t=Object.keys(takes||{});if(!n.length&&!t.length)return '';
-    return ['dx','dy'].map(function(v){return '@property --clay-'+v+'{syntax:"<length>";inherits:false;initial-value:0px}';}).concat(['@property --clay-r{syntax:"<angle>";inherits:false;initial-value:0deg}','@property --clay-s{syntax:"<number>";inherits:false;initial-value:1}',
-      '@media (prefers-reduced-motion: no-preference) {\n'+n.map(function(k){return '  @keyframes clay-'+k+' {'+MOTIONS[k].k+'}';}).concat(t.map(function(k){return '  @keyframes '+k+' {'+takes[k]+'}';})).join('\n')+'\n}']).join('\n');}
-  function motionOf(list){var used={},takes={};list.forEach(function(c){var m=c.css&&/clay-(\w+)/.exec(c.css.animation||''),tk=c.css&&takeOf(c.css);if(m)used[m[1]]=1;if(tk)takes[tk.name]=tk.frames;});return motionCSS(used,takes);}
+  function motionCSS(used,takes,ins){var n=Object.keys(used).filter(function(k){return MOTIONS[k]&&MOTIONS[k].k;}),t=Object.keys(takes||{}),a=Object.keys(ins||{});if(!n.length&&!t.length&&!a.length)return '';
+    return ['dx','dy'].map(function(v){return '@property --clay-'+v+'{syntax:"<length>";inherits:false;initial-value:0px}';}).concat(['@property --clay-r{syntax:"<angle>";inherits:false;initial-value:0deg}','@property --clay-s{syntax:"<number>";inherits:false;initial-value:1}'].concat(a.length?['@property --clay-ax{syntax:"<length-percentage>";inherits:false;initial-value:0px}','@property --clay-ay{syntax:"<length-percentage>";inherits:false;initial-value:0px}','@property --clay-ar{syntax:"<angle>";inherits:false;initial-value:0deg}']:[]).concat([
+      '@media (prefers-reduced-motion: no-preference) {\n'+n.map(function(k){return '  @keyframes clay-'+k+' {'+MOTIONS[k].k+'}';}).concat(t.map(function(k){return '  @keyframes '+k+' {'+takes[k]+'}';})).concat(a.map(function(k){return '  @keyframes '+k+' {'+ins[k]+'}';})).join('\n')+'\n}'])).join('\n');}
+  function motionOf(list){var used={},takes={},ins={};list.forEach(function(c){var m=c.css&&/clay-(\w+)/.exec(c.css.animation||''),tk=c.css&&takeOf(c.css),ar=c.css&&arriveOf(c.css);if(m)used[m[1]]=1;if(tk)takes[tk.name]=tk.frames;if(ar)ins[ar.name]=ar.frames;});return motionCSS(used,takes,ins);}
   function snap(v,scale){var b=scale[0];for(var i=1;i<scale.length;i++)if(Math.abs(scale[i]-v)<Math.abs(b-v))b=scale[i];return b;}
   function hash(s){var h=2166136261;for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return (h>>>0).toString(36);}
   function mk(tag,cls,text){var e=doc.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e;}
@@ -106,8 +119,9 @@
   var sheet=mk('style');sheet.id='clay-studio-css';doc.head.appendChild(sheet);
   var rootStyle=root.getAttribute('style')||'';
   root.style.containerType='inline-size';root.style.containerName='clay-page';
-  // A take's stops are the piece's own record; only the keyframes made from them are CSS.
-  function decls(r,imp){return Object.keys(r).filter(function(k){return k!=='--clay-take';}).map(function(k){return k+':'+r[k]+(imp?' !important':'');}).join(';');}
+  // A take's stops and an arrival's throw are the piece's own records; only what is made from them is CSS.
+  var RECORDS={'--clay-take':1,'--clay-arrive':1};
+  function decls(r,imp){return Object.keys(r).filter(function(k){return !RECORDS[k];}).map(function(k){return k+':'+r[k]+(imp?' !important':'');}).join(';');}
   var hush=false; // a drag preview re-renders often; the change count waits for the drop
   var dress='',anchor=null; // the state being styled ('', 'hover', 'focus' or 'active'), and the thing whose state it is
   // The key for a thing in the state being styled: inside the thing whose state it is, it's a look on that thing's state.
@@ -132,7 +146,10 @@
     Object.keys(ease).forEach(function(id){var e=easing(ease[id],id);if(e)out.unshift('html:not([data-clay-on]) [data-cs="'+id+'"]{transition:'+e+' !important}');});
     if(touch.length)out.push('@media (hover: none){\n'+touch.join('\n')+'\n}');
     // a moving piece takes its motion everywhere, at every size, except while it is being held or measured
-    var lib=motionCSS(used,takes);if(lib){out.unshift(lib);Object.keys(moving).forEach(function(id){out.push('html:not([data-clay-drag]) [data-cs="'+id+'"]{'+decls(MOVED,true)+'}');});}
+    var ins={},flying={};Object.keys(layers.base).forEach(function(k){var a=!split(k)[1]&&arriveOf(layers.base[k]);if(a){ins[a.name]=a.frames;flying[k]=a;}});
+    var lib=motionCSS(used,takes,ins);if(lib){out.unshift(lib);Object.keys(Object.assign({},moving,flying)).forEach(function(id){out.push('html:not([data-clay-drag]) [data-cs="'+id+'"]{'+decls(flying[id]?MOVED_IN:MOVED,true)+'}');});}
+    // arriving pieces follow their group's view timeline; the page clips instead of hiding, or that would hold them still
+    if(Object.keys(flying).length)out.push('[data-cs="'+idOf(root)+'"]{overflow:clip !important}','@media '+SCROLLS+'{\n@supports '+VIEW+'{\n'+Object.keys(flying).map(function(id){return 'html [data-cs="'+id+'"]{'+decls(arriving(layers.base[id],flying[id]),true)+'}';}).join('\n')+'\n}\n}');
     // a scattered piece is apart only at desktop sizes, and comes together while it is held or measured
     var apart=marked('--clay-scatter'),reach=marked('--clay-reach');
     if(apart.length||reach.length)out.push('@media '+APART+'{\n@container clay-page (min-width: 768px){\n'+apart.map(function(id){return 'html:not([data-clay-drag]) [data-cs="'+id+'"]{transform:var(--clay-scatter) !important}';})
@@ -1669,7 +1686,10 @@
     });
     Object.keys(ease).forEach(function(id){var el=byId(id);if(el&&el.isConnected&&easing(ease[id],id))out.push({bp:'base',sel:selectorOf(el),css:{transition:easing(ease[id],id)},text:'So it eases between its looks instead of snapping.'});});
     // :root makes this win over the phone layout's resets, so the motion plays at every size
-    Object.keys(moving).forEach(function(id){var el=byId(id);if(el&&el.isConnected)out.push({bp:'base',sel:':root '+selectorOf(el),css:Object.assign({},MOVED),text:'So its motion has somewhere to go.'});});
+    var flying=marked('--clay-arrive').filter(function(id){var el=byId(id);return el&&el.isConnected&&arriveOf(layers.base[id]);});
+    Object.keys(moving).concat(flying.filter(function(id){return !moving[id];})).forEach(function(id){var el=byId(id);if(el&&el.isConnected)out.push({bp:'base',sel:':root '+selectorOf(el),css:Object.assign({},flying.indexOf(id)>=0?MOVED_IN:MOVED),text:'So its motion has somewhere to go.'});});
+    flying.forEach(function(id){out.push({bp:'arrive',sel:selectorOf(byId(id)),css:arriving(layers.base[id],arriveOf(layers.base[id])),text:'It flies home as its group scrolls into view, and apart again on the way back.'});});
+    if(flying.length)out.push({bp:'base',sel:selectorOf(root),css:{overflow:'clip'},text:'Clipped like overflow: hidden, but without holding still the scroll that brings the pieces home.'});
     marked('--clay-scatter').forEach(function(id){var el=byId(id);if(el&&el.isConnected)out.push({bp:'apart',sel:selectorOf(el),css:{transform:'var(--clay-scatter)'},text:'It waits apart until the pointer reaches its group.'});});
     marked('--clay-reach').forEach(function(id){var el=byId(id);if(el&&el.isConnected)out.push({bp:'apart',sel:selectorOf(el)+'::after',css:Object.assign({},REACH),text:'The group’s reach: anywhere near its scattered pieces brings them together.'});});
     if(gooSvg)out.push({text:'Add this at the end of <body>, so url(#clay-goo) can find the goo filter: `'+gooMarkup()+'`'});
@@ -1680,18 +1700,19 @@
   function htmlOf(c){var d=doc.implementation.createHTMLDocument('').importNode(c,true);[d].concat(Array.prototype.slice.call(d.querySelectorAll('*'))).forEach(function(n){['data-cs','style','contenteditable'].forEach(function(a){n.removeAttribute(a);});
     if(n.tagName==='IMG'&&/^data:/.test(n.getAttribute('src')||''))n.setAttribute('src','your-image.jpg');});return d.outerHTML;}
   // A reason can quote a piece's own words, so it may close neither its comment nor the <style> it is written into.
-  function block(c,ind,imp){return (c.text?ind+'/* '+String(c.text).replace(/\*\//g,'* /').replace(/</g,'‹')+' */\n':'')+ind+c.sel+' {\n'+Object.keys(c.css).filter(function(k){return k!=='--clay-take';}).map(function(k){return ind+'  '+k+': '+c.css[k]+(imp?' !important':'')+';';}).join('\n')+'\n'+ind+'}';}
+  function block(c,ind,imp){return (c.text?ind+'/* '+String(c.text).replace(/\*\//g,'* /').replace(/</g,'‹')+' */\n':'')+ind+c.sel+' {\n'+Object.keys(c.css).filter(function(k){return !RECORDS[k];}).map(function(k){return ind+'  '+k+': '+c.css[k]+(imp?' !important':'')+';';}).join('\n')+'\n'+ind+'}';}
   function cssText(list,imp){
-    var touch=list.filter(function(c){return c.css&&c.bp==='touch';}),apart=list.filter(function(c){return c.css&&c.bp==='apart';});
+    var touch=list.filter(function(c){return c.css&&c.bp==='touch';}),apart=list.filter(function(c){return c.css&&c.bp==='apart';}),arrive=list.filter(function(c){return c.css&&c.bp==='arrive';});
     return [motionOf(list)].concat(ORDER_BP.map(function(L){
       var mine=list.filter(function(c){return c.css&&c.bp===L;});if(!mine.length)return '';
       return L==='base'?mine.map(function(c){return block(c,'',imp);}).join('\n\n'):'@media (max-width: '+BPS[L].max+'px) {\n'+mine.map(function(c){return block(c,'  ',imp);}).join('\n\n')+'\n}';
     }),[touch.length?'@media (hover: none) {\n'+touch.map(function(c){return block(c,'  ',imp);}).join('\n\n')+'\n}':'',
-      apart.length?'@media '+APART+' and (min-width: '+(BPS.mobile.max+1)+'px) {\n'+apart.map(function(c){return block(c,'  ',imp);}).join('\n\n')+'\n}':'']).filter(Boolean).join('\n\n');
+      apart.length?'@media '+APART+' and (min-width: '+(BPS.mobile.max+1)+'px) {\n'+apart.map(function(c){return block(c,'  ',imp);}).join('\n\n')+'\n}':'',
+      arrive.length?'@media '+SCROLLS+' {\n  @supports '+VIEW+' {\n'+arrive.map(function(c){return block(c,'    ',imp);}).join('\n\n')+'\n  }\n}':'']).filter(Boolean).join('\n\n');
   }
   function agentText(list){var lib=motionOf(list);
     return '# Layout changes from Clay Studio\nPage: '+location.href+'\nApply these to the source files so the page matches what was arranged by hand. They are ordinary HTML structure and CSS. Free compositions use absolute positions on desktop and a readable stack on phones. Preserve intentional placement, text and links. Rules marked with a screen size go inside that @media query.\n\n'+
-      list.map(function(c,i){var where=c.bp==='touch'?' (only on touch screens: @media (hover: none))':c.bp==='apart'?' (only with a mouse, at '+(BPS.mobile.max+1)+'px and wider, without reduced motion: @media '+APART+' and (min-width: '+(BPS.mobile.max+1)+'px))':c.bp&&c.bp!=='base'?' (only at '+BPS[c.bp].max+'px and below: @media (max-width: '+BPS[c.bp].max+'px))':'';
+      list.map(function(c,i){var where=c.bp==='touch'?' (only on touch screens: @media (hover: none))':c.bp==='arrive'?' (only where scroll-driven animations work, without reduced motion: @media '+SCROLLS+' { @supports '+VIEW+' { … } })':c.bp==='apart'?' (only with a mouse, at '+(BPS.mobile.max+1)+'px and wider, without reduced motion: @media '+APART+' and (min-width: '+(BPS.mobile.max+1)+'px))':c.bp&&c.bp!=='base'?' (only at '+BPS[c.bp].max+'px and below: @media (max-width: '+BPS[c.bp].max+'px))':'';
         return (i+1)+'. '+(c.sel?'`'+c.sel+'`'+where+': ':'')+(c.text||'Style change.')+(c.css?'\n   ```css\n'+block(c,'   ')+'\n   ```':'');}).join('\n')+
       (lib?'\n\nThe motion in these rules moves registered properties through keyframes. Add this as it is:\n```css\n'+lib+'\n```':'');
   }

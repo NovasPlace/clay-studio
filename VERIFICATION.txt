@@ -526,3 +526,62 @@ Act it out, 2026-10-09 (Claude)
     8/8, agent 20/20, hosting 12/12, server 75/75.
   Not yet: takes play at full size on phones (no smaller motion there), and
     several takes don't keep in time with each other.
+
+Assemble on scroll, 2026-10-09 (Claude)
+  sculpt.js: a group's bar has Assemble on scroll next to Scatter. Scatter
+    now has two ways home, on hover (as before) or on scroll; choosing the
+    other one switches, choosing the one that's on gathers; one undo step.
+  relations.js: the throws are worked out as before (hover Scatter is
+    unchanged). On scroll, each piece keeps its throw as a share of its own
+    size (so a drawing that shrinks on a phone throws in proportion) and a
+    place in drawing order; the group becomes the view timeline they follow.
+    Grouping a scattered group with more pieces scatters the new group the
+    same way (before, it was silently gathered).
+  studio.js: each arriving piece gets keyframes of its own (shared keyframes
+    reading var() only jump halfway in Gecko, probed) over three more
+    registered values added to its idle motion's, so a piece that walks
+    (an Act take) keeps walking on time while it arrives on the scroll. The
+    arrival is inside @media (prefers-reduced-motion: no-preference) and
+    @supports (animation-timeline: view()), so without them the group is
+    simply whole. The range is the group's entry: each piece is home a little
+    after the one before, all of them once the whole group is on the screen.
+    The page root clips with overflow: clip instead of hidden: hidden makes it
+    a scroll container that never scrolls, and the arrival froze (probed).
+  Probed first in headless Waterfox 153: named view timelines, ranges, two
+    animations on two timelines on one piece, and literal keyframes all work;
+    overflow: hidden on the root holds the arrival still; var() keyframes
+    don't interpolate.
+  Found in review (three lenses, each finding checked by a skeptic): ranges
+    that ended at mid-screen could never finish for a group near the end of
+    a page (now the entry range, which any group reaches); turning it off
+    deleted a hover look of the group's own; merging an assembling group
+    turned it off; Act measured an arriving part mid-flight and called the
+    arrival its motion; gathering left the old reason in the export's
+    comments; the backdrop message named Scatter. All fixed. Not fixed: a
+    piece in an assembling group that also has motion set for one screen
+    size, or for a state, gets the arrival with its base motion there.
+  Headless Waterfox, real clicks, keys and mouse-wheel scrolling, Low Tide
+    Club: assemble 25/25. One labelled step; the drawing is a timeline and
+    each part has its throw and its place, in order; pressed states; the
+    editor plays it (registered values, keyframes, guards, root clip); the
+    layout doesn't move; Act doesn't count an arrival as its motion; in the
+    editor's Phone preview the parts wait apart below the fold, come home a
+    little more each wheel notch and never back out, the first ahead of the
+    last, all home once the drawing is on screen, apart again scrolling up;
+    Scatter switches to hover and gathers; Ctrl+Z / Ctrl+Shift+Z; a crab
+    with an Act take keeps its time animation and gains a view-timeline one;
+    the export has no script, the guards, keyframes, timeline, ranges and
+    clip, not the records, and the For an agent text says where it goes;
+    peeling gathers; the exported page on a 390px phone and on a desktop:
+    apart below the fold, home once on screen, apart again going back, no
+    sideways scroll; turning it off keeps a hover lift; grouping it with a
+    card keeps it assembling under the new group; a drawing moved to the very
+    end of the page (its middle never reaches mid-screen) is home when
+    scrolled all the way down.
+    Reduced motion 3/3: the exported drawing and the editor stay whole.
+  Regression: act 26/26, act2 10/10, site 18/18, pages 11/11, Sculpt
+    30/30, groups 8/8, Layout tools and classic 13/13, storage 5/5, split
+    6/6, revision 9/9, motion 8/8, agent 20/20, hosting 12/12, Act reduced
+    motion 4/4, server 75/75, npm test 26/26.
+  Not yet: a single piece can't arrive on its own (only a group's pieces),
+    and the throws can't be shaped by hand yet (they're Scatter's).
