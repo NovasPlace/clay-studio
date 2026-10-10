@@ -316,6 +316,11 @@
     q('.clay-status').textContent=server?SAVED[d.state]:d.ok?'Saved in this browser. Export a page to keep a portable copy.':'Browser storage is full or unavailable. Export now to keep these changes.';
     if(server&&(d.state==='offline'||d.state==='stale'))say(SAVED[d.state]);else if(!server&&!d.ok)say('Could not autosave. Use Export to keep your page before closing.');});
   window.addEventListener('error',()=>{if(!seenError){seenError=true;say('Something interrupted the editor. Your last saved work stays here; reload to recover.');}});
+  // The tools and the hint float over the bottom of the page, so while you sculpt the page gets room to scroll its end
+  // clear of them, however tall a long hint makes them. Editor-only: it isn't in the page, its history or its export.
+  const room=document.createElement('style');room.dataset.clayUi='';document.head.appendChild(room);
+  const clear=()=>{room.textContent='html[data-sculpting] body{padding-bottom:'+(Math.ceil(q('.clay-bottom').getBoundingClientRect().height)+24)+'px}';};
+  if(window.ResizeObserver)new ResizeObserver(clear).observe(q('.clay-bottom'));clear();
   document.documentElement.setAttribute('data-sculpting','');setTool('hand');refresh();
   try{if(sessionStorage.getItem('clay-view-site')){sessionStorage.removeItem('clay-view-site');action('preview');}}catch(err){}
   // Agents reach a page on a Clay server through agent.js, with the same pieces, rules and undo as your hands.
